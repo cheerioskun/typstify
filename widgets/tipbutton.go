@@ -1,0 +1,205 @@
+package widgets
+
+import (
+	"image"
+	"image/color"
+	"time"
+
+	"gioui.org/io/event"
+	"gioui.org/io/pointer"
+	"gioui.org/layout"
+	"gioui.org/op"
+	"gioui.org/op/clip"
+	"gioui.org/widget"
+	"gioui.org/widget/material"
+	cmp "gioui.org/x/component"
+	"github.com/oligo/gioview/misc"
+	"github.com/oligo/gioview/theme"
+)
+
+type (
+	C = layout.Context
+	D = layout.Dimensions
+)
+
+// TipArea holds the state information for displaying a tooltip. The zero
+// value will choose sensible defaults for all fields.
+type TipArea struct {
+	cmp.VisibilityAnimation
+	Hover     cmp.InvalidateDeadline
+	Press     cmp.InvalidateDeadline
+	LongPress cmp.InvalidateDeadline
+	init      bool
+	// HoverDelay is the delay between the cursor entering the tip area
+	// and the tooltip appearing.
+	HoverDelay time.Duration
+	// LongPressDelay is the required duration of a press in the area for
+	// it to count as a long press.
+	LongPressDelay time.Duration
+	// LongPressDuration is the amount of time the tooltip should be displayed
+	// after being triggered by a long press.
+	LongPressDuration time.Duration
+	// FadeDuration is the amount of time it takes the tooltip to fade in
+	// and out.
+	FadeDuration time.Duration
+	// The alignment of the tip relative to the widget w.
+	Direction layout.Direction
+}
+
+const (
+	tipAreaHoverDelay        = time.Millisecond * 500
+	tipAreaLongPressDuration = time.Millisecond * 1500
+	tipAreaFadeDuration      = time.Millisecond * 250
+	longPressTheshold        = time.Millisecond * 500
+)
+
+// Layout renders the provided widget with the provided tooltip. The tooltip
+// will be summoned if the widget is hovered or long-pressed.
+func (t *TipArea) Layout(gtx C, tip cmp.Tooltip, w layout.Widget) D {
+	if !t.init {
+		t.init = true
+		t.VisibilityAnimation.State = cmp.Invisible
+		if t.HoverDelay == time.Duration(0) {
+			t.HoverDelay = tipAreaHoverDelay
+		}
+		if t.LongPressDelay == time.Duration(0) {
+			t.LongPressDelay = longPressTheshold
+		}
+		if t.LongPressDuration == time.Duration(0) {
+			t.LongPressDuration = tipAreaLongPressDuration
+		}
+		if t.FadeDuration == time.Duration(0) {
+			t.FadeDuration = tipAreaFadeDuration
+		}
+		t.VisibilityAnimation.Duration = t.FadeDuration
+	}
+	for {
+		ev, ok := gtx.Event(pointer.Filter{
+			Target: t,
+			Kinds:  pointer.Press | pointer.Release | pointer.Enter | pointer.Leave,
+		})
+		if !ok {
+			break
+		}
+		e, ok := ev.(pointer.Event)
+		if !ok {
+			continue
+		}
+		switch e.Kind {
+		case pointer.Enter:
+			t.Hover.SetTarget(gtx.Now.Add(t.HoverDelay))
+		case pointer.Leave:
+			t.VisibilityAnimation.Disappear(gtx.Now)
+			t.Hover.ClearTarget()
+			t.Press.ClearTarget()
+		case pointer.Press:
+			t.Press.SetTarget(gtx.Now.Add(t.LongPressDelay))
+		case pointer.Release:
+			t.Press.ClearTarget()
+		case pointer.Cancel:
+			t.Hover.ClearTarget()
+			t.Press.ClearTarget()
+		}
+	}
+	if t.Hover.Process(gtx) {
+		t.VisibilityAnimation.Appear(gtx.Now)
+	}
+	if t.Press.Process(gtx) {
+		t.VisibilityAnimation.Appear(gtx.Now)
+		t.LongPress.SetTarget(gtx.Now.Add(t.LongPressDuration))
+	}
+	if t.LongPress.Process(gtx) {
+		t.VisibilityAnimation.Disappear(gtx.Now)
+	}
+	return layout.Stack{}.Layout(gtx,
+		layout.Stacked(w),
+		layout.Expanded(func(gtx C) D {
+			defer pointer.PassOp{}.Push(gtx.Ops).Pop()
+			defer clip.Rect(image.Rectangle{Max: gtx.Constraints.Min}).Push(gtx.Ops).Pop()
+			event.Op(gtx.Ops, t)
+
+			originalMin := gtx.Constraints.Min
+			gtx.Constraints.Min = image.Point{}
+
+			if t.Visible() {
+				macro := op.Record(gtx.Ops)
+				tip.Bg = cmp.Interpolate(color.NRGBA{}, tip.Bg, t.VisibilityAnimation.Revealed(gtx))
+				dims := tip.Layout(gtx)
+				call := macro.Stop()
+
+				xOffset := 0
+				yOffset := 0
+				switch t.Direction {
+				case layout.E:
+					xOffset = originalMin.X
+					yOffset = (originalMin.Y / 2) - (dims.Size.Y / 2)
+				case layout.W:
+					xOffset = -originalMin.X
+					yOffset = (originalMin.Y / 2) - (dims.Size.Y / 2)
+				default:
+					xOffset = (originalMin.X / 2) - (dims.Size.X / 2)
+					yOffset = originalMin.Y
+				}
+
+				macro = op.Record(gtx.Ops)
+				op.Offset(image.Pt(xOffset, yOffset)).Add(gtx.Ops)
+				call.Add(gtx.Ops)
+				call = macro.Stop()
+				op.Defer(gtx.Ops, call)
+			}
+			return D{}
+		}),
+	)
+}
+
+// type TipIconButtonStyle struct {
+// 	icon    *widget.Icon
+// 	button  *widget.Clickable
+// 	Color   color.NRGBA
+// 	Size    unit.Dp
+// 	State   *TipArea
+// 	tooltip cmp.Tooltip
+// }
+
+// func TipIconButton(th *theme.Theme, area *TipArea, button *widget.Clickable, label string, icon *widget.Icon) TipIconButtonStyle {
+// 	return TipIconButtonStyle{
+// 		icon:    icon,
+// 		button:  button,
+// 		State:   area,
+// 		Color:   th.ContrastBg,
+// 		Size:    unit.Dp(18),
+// 		tooltip: cmp.PlatformTooltip(th.Theme, label),
+// 	}
+
+// }
+
+// func (btn *TipIconButtonStyle) Layout(gtx layout.Context, th *theme.Theme) layout.Dimensions {
+// 	return btn.State.Layout(gtx, btn.tooltip, func(gtx layout.Context) layout.Dimensions {
+// 		return material.Clickable(gtx, btn.button, func(gtx layout.Context) layout.Dimensions {
+// 			return misc.Icon{Icon: btn.icon, Color: btn.Color, Size: btn.Size}.Layout(gtx, th)
+// 		})
+// 	})
+
+// }
+
+// TipIconButtonStyle lays out an IconButton with a tooltip configured.
+type TipIconButtonStyle struct {
+	cmp.Tooltip
+	material.IconButtonStyle
+	State *TipArea
+}
+
+// TipIconButton creates a TipIconButtonStyle.
+func TipIconButton(th *theme.Theme, area *TipArea, button *widget.Clickable, label string, icon *widget.Icon) TipIconButtonStyle {
+	btn := misc.IconButton(th, icon, button, label)
+	return TipIconButtonStyle{
+		IconButtonStyle: btn,
+		State:           area,
+		Tooltip:         cmp.PlatformTooltip(th.Theme, label),
+	}
+}
+
+// Layout renders the TipIconButton.
+func (t TipIconButtonStyle) Layout(gtx C) D {
+	return t.State.Layout(gtx, t.Tooltip, t.IconButtonStyle.Layout)
+}

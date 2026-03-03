@@ -1,0 +1,10 @@
+packaging windows installer: 
+
+Install NSIS:
+Download: https://nsis.sourceforge.io/Download
+
+Make installer:
+
+```
+makensis typstify_installer.nsi
+```

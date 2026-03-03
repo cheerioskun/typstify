@@ -1,0 +1,81 @@
+package utils
+
+import (
+	"container/list"
+	"sync"
+)
+
+// A simple lru cache to cache loaded images.
+type LruCache[T any] struct {
+	queue    *list.List
+	items    map[string]*node[T]
+	capacity int
+	evictCb  func(key string, val T)
+	mu       sync.Mutex
+}
+
+type node[T any] struct {
+	val T
+	ptr *list.Element
+}
+
+func NewLruCache[T any](capacity int, evictCb func(key string, val T)) *LruCache[T] {
+	return &LruCache[T]{
+		queue:    list.New(),
+		items:    make(map[string]*node[T]),
+		capacity: capacity,
+		evictCb:  evictCb,
+	}
+}
+
+func (lru *LruCache[T]) Put(key string, val T) {
+	lru.mu.Lock()
+	defer lru.mu.Unlock()
+	if item, ok := lru.items[key]; !ok {
+		// evict the last items if capacity exceeds.
+		if len(lru.items) >= lru.capacity {
+			lru.evict()
+		}
+
+		// put to cache
+		front := lru.queue.PushFront(key)
+		lru.items[key] = &node[T]{val: val, ptr: front}
+	} else {
+		// update existing item and move item to the front of the queue.
+		item.val = val
+		lru.items[key] = item
+		lru.queue.MoveToFront(item.ptr)
+	}
+}
+
+func (lru *LruCache[T]) Get(key string) T {
+	lru.mu.Lock()
+	defer lru.mu.Unlock()
+	if item, ok := lru.items[key]; ok {
+		lru.queue.MoveToFront(item.ptr)
+		return item.val
+	} else {
+		return *new(T)
+	}
+}
+
+func (lru *LruCache[T]) evict() {
+	back := lru.queue.Back()
+	if back == nil {
+		return
+	}
+	lru.queue.Remove(back)
+	evicted := back.Value.(string)
+	if lru.evictCb != nil {
+		lru.evictCb(evicted, lru.items[evicted].val)
+	}
+	delete(lru.items, evicted)
+}
+
+func (lru *LruCache[T]) Clear() {
+	lru.mu.Lock()
+	defer lru.mu.Unlock()
+	for lru.queue.Len() > 0 {
+		lru.evict()
+	}
+}

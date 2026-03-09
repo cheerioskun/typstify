@@ -115,7 +115,6 @@ func (h *HoverTips) Clear(gtx layout.Context) {
 	h.anim.Disappear(gtx.Now)
 	h.cancelled = false
 	h.needRebuild = false
-	h.editor.RemoveCommands(h)
 }
 
 func (h *HoverTips) SetColorScheme(colorScheme string) {
@@ -153,13 +152,6 @@ func (h *HoverTips) buildSpans(th *theme.Theme) {
 }
 
 func (h *HoverTips) Update(gtx layout.Context, th *theme.Theme) (string, bool) {
-	// press ESC to cancel and close the popup
-	h.editor.RegisterCommand(h, key.Filter{Name: key.NameEscape},
-		func(gtx layout.Context, evt key.Event) gvcode.EditorEvent {
-			h.Clear(gtx)
-			return nil
-		},
-	)
 
 	for {
 		span, event, ok := h.label.Update(gtx)
@@ -244,8 +236,17 @@ func (h *HoverTips) Layout(gtx layout.Context, th *theme.Theme) layout.Dimension
 	}
 
 	if !h.anim.Visible() || len(h.spanStyles) == 0 {
+		h.editor.RemoveCommands(h)
 		return layout.Dimensions{}
 	}
+
+	// press ESC to cancel and close the popup
+	h.editor.RegisterCommand(h, key.Filter{Name: key.NameEscape},
+		func(gtx layout.Context, evt key.Event) gvcode.EditorEvent {
+			h.Clear(gtx)
+			return nil
+		},
+	)
 
 	h.list.Axis = layout.Vertical
 

@@ -21,12 +21,13 @@ import (
 	"gioui.org/widget"
 	"gioui.org/widget/material"
 	"github.com/oligo/gioview/explorer"
-	"github.com/oligo/gioview/menu"
 	"github.com/oligo/gioview/misc"
 	"github.com/oligo/gioview/theme"
+	"github.com/oligo/gioview/view"
 	gv "github.com/oligo/gioview/widget"
 	"golang.org/x/exp/shiny/materialdesign/icons"
 	"looz.ws/typstify/utils"
+	"looz.ws/typstify/widgets/menu"
 )
 
 var (
@@ -37,10 +38,12 @@ var (
 )
 
 type OnDropConfirmFunc func(srcPath string, dest *FileNode, onConfirmed func())
+type MenuOptionFunc func(node *FileNode) [][]menu.MenuOption
 
 // TreeView is the view controller of file nodes.
 type TreeView struct {
 	root *FileNode
+	vm   view.ViewManager
 
 	// states maps a file path to its persistent UI state.
 	states map[string]*NodeState
@@ -51,8 +54,12 @@ type TreeView struct {
 	// View components managed by the controller
 	list widget.List
 
-	// The selected node
+	// The selected node which is determined by a left-click.
+	// Keyboard shortcuts operates on selected node.
 	selectedNode *FileNode
+	// The context node which is determined by a right-click.
+	// Context menu operates on context node.
+	contextNode *FileNode
 
 	// node currently being dropped to
 	currentDropTarget *FileNode
@@ -60,14 +67,11 @@ type TreeView struct {
 	// Global context menu state
 	contextMenu *menu.ContextMenu
 
-	menuPos       image.Point
-	isMenuVisible bool
-
 	pendingRebuild bool
 	pointerEntered bool
 	dndInited      bool
 
-	OnDropConfirmFunc
+	OnDropConfirmFunc OnDropConfirmFunc
 }
 
 type TreeState struct {
@@ -81,6 +85,7 @@ func NewTreeView(rootNode *FileNode) *TreeView {
 		states:         make(map[string]*NodeState),
 		visibleNodes:   make([]FlatNode, 0),
 		pendingRebuild: true,
+		contextMenu:    menu.NewContextMenu(),
 	}
 }
 
@@ -145,27 +150,19 @@ func (t *TreeView) Layout(gtx layout.Context, th *theme.Theme) layout.Dimensions
 	dropTarget := t.currentDropTarget
 
 	macro := op.Record(gtx.Ops)
-	dims := layout.Flex{
-		Axis:      layout.Vertical,
-		Alignment: layout.Middle,
-	}.Layout(gtx,
-		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-			return t.layout(gtx, th, dropTarget)
-		}),
-		layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
-			// setup an clip area for context menu and key, pointer events.
-			//defer clip.Rect(image.Rectangle{Max: gtx.Constraints.Max}).Push(gtx.Ops).Pop()
-			//event.Op(gtx.Ops, t)
+	dims := func(gtx layout.Context) layout.Dimensions {
+		if t.root == t.contextNode {
+			return widget.Border{
+				Color:        th.ContrastBg,
+				CornerRadius: 0,
+				Width:        unit.Dp(1),
+			}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+				return t.layout(gtx, th, dropTarget)
+			})
+		}
 
-			// top level menu.
-			// if n.menu != nil {
-			// 	n.menu.Layout(gtx, th)
-			// }
-
-			return layout.Dimensions{Size: gtx.Constraints.Max}
-		}),
-	)
-
+		return t.layout(gtx, th, dropTarget)
+	}(gtx)
 	callOp := macro.Stop()
 
 	defer clip.Rect(image.Rectangle{Max: dims.Size}).Push(gtx.Ops).Pop()
@@ -176,6 +173,10 @@ func (t *TreeView) Layout(gtx layout.Context, th *theme.Theme) layout.Dimensions
 	}
 	event.Op(gtx.Ops, t)
 	callOp.Add(gtx.Ops)
+
+	if t.contextMenu != nil {
+		t.contextMenu.Layout(gtx, th)
+	}
 
 	return dims
 }
@@ -237,7 +238,7 @@ func (t *TreeView) processKeyEvents(gtx layout.Context) error {
 		transfer.TargetFilter{Target: t, Type: mimeText},
 		transfer.TargetFilter{Target: t, Type: mimeDnd},
 		// Detect if pointer is inside of the dir item, so we can highlight it when dropping items to it.
-		pointer.Filter{Target: t, Kinds: pointer.Enter | pointer.Leave | pointer.Release},
+		pointer.Filter{Target: t, Kinds: pointer.Enter | pointer.Leave | pointer.Press},
 	}
 
 	for {
@@ -268,9 +269,18 @@ func (t *TreeView) processKeyEvents(gtx layout.Context) error {
 				t.pointerEntered = true
 			case pointer.Leave:
 				t.pointerEntered = false
-			case pointer.Release:
+			case pointer.Press:
 				// let treeView to grab the focus, so we can do copy/cut/paste
 				gtx.Execute(key.FocusCmd{Tag: t})
+				// also update context node
+				if event.Buttons == pointer.ButtonSecondary {
+					t.OnContextNodeChange(t.root)
+				} else {
+					t.OnContextNodeChange(nil)
+					// clear selection
+					t.OnSelect(nil)
+
+				}
 			}
 		case key.FocusEvent:
 			// no-op
@@ -298,7 +308,6 @@ func (t *TreeView) processKeyEvents(gtx layout.Context) error {
 					return err
 				}
 			case mimeDnd:
-				log.Println("root node received DnD drop! source: ", string(content))
 				t.OnDropped(t.root, string(content))
 			}
 		}
@@ -307,24 +316,24 @@ func (t *TreeView) processKeyEvents(gtx layout.Context) error {
 	return nil
 }
 
-// Create file or subfolder under the current folder.
-func (t *TreeView) CreateChild(gtx layout.Context, kind explorer.NodeKind) error {
-	if t.selectedNode == nil || !t.selectedNode.IsDir() {
+// Create file or subfolder under the specified folder.
+func (t *TreeView) CreateChild(gtx layout.Context, parent *FileNode, kind explorer.NodeKind, onFinish func(newNode *FileNode)) error {
+	if parent == nil || !parent.IsDir() {
 		return nil
 	}
 
 	var err error
 	if kind == explorer.FileNode {
-		err = t.selectedNode.AddChild("new file", explorer.FileNode)
+		err = parent.AddChild("new file", explorer.FileNode)
 	} else {
-		err = t.selectedNode.AddChild("new folder", explorer.FolderNode)
+		err = parent.AddChild("new folder", explorer.FolderNode)
 	}
 
 	if err != nil {
 		return err
 	}
 
-	childNode := t.selectedNode.Children()[0]
+	childNode := parent.Children()[0]
 
 	childNodeState := t.GetState(childNode.Path)
 
@@ -332,23 +341,31 @@ func (t *TreeView) CreateChild(gtx layout.Context, kind explorer.NodeKind) error
 		err := childNode.UpdateName(text)
 		if err != nil {
 			log.Println("update name err: ", err)
+			return
 		}
-		// Trigger a rebuild
-		t.pendingRebuild = true
+
+		if onFinish != nil {
+			onFinish(childNode)
+		}
 	})
 
 	// focus the child input
 	childNodeState.Editable.SetEditing(true)
 
+	// Expand parent folder
+	nodeState := t.GetState(parent.Path)
+	nodeState.Expanded = true
+	// Trigger a rebuild
+	t.pendingRebuild = true
 	return nil
 }
 
-func (t *TreeView) Remove() error {
-	if t.selectedNode == nil || !t.selectedNode.IsDir() {
+func (t *TreeView) Remove(node *FileNode) error {
+	if node == nil || !node.IsDir() {
 		return nil
 	}
 
-	err := t.selectedNode.Delete()
+	err := node.Delete()
 	if err != nil {
 		return err
 	}
@@ -418,11 +435,39 @@ func (t *TreeView) OnCopyOrCut(gtx layout.Context, srcNode *FileNode, isCut bool
 	gtx.Execute(clipboard.WriteCmd{Type: mimeText, Data: io.NopCloser(strings.NewReader(srcNode.Path))})
 
 	if isCut {
-		nodeState := t.GetState(t.selectedNode.Path)
+		nodeState := t.GetState(srcNode.Path)
 		nodeState.Cutted = true
 	}
 
 	return nil
+}
+
+// OnContextNodeChange is called when the node is right-clicked.
+// This should be distinguished from [OnSelect] that the latter is triggered
+// by left clicking and the node is highlighted with background color. And the
+// former will only be highlighted with a border.
+// Both treeView and flatNode will receive the same event and root is always
+// the first to process the event, so we can get the right context node here.
+func (t *TreeView) OnContextNodeChange(fileNode *FileNode) {
+	lastContextNode := t.contextNode
+	if lastContextNode != nil {
+		nodeState := t.GetState(lastContextNode.Path)
+		nodeState.Label.SetActivated(false)
+	}
+
+	t.contextNode = fileNode
+	if fileNode != nil {
+		nodeState := t.GetState(fileNode.Path)
+		nodeState.Label.SetActivated(true)
+	}
+
+	// update context menu options
+	if t.contextNode == nil {
+		t.contextMenu.SetOptions(nil)
+	} else if lastContextNode != fileNode {
+		menuOpts := t.getContextMenuOptions(t.contextNode)
+		t.contextMenu.SetOptions(menuOpts)
+	}
 }
 
 func (t *TreeView) OnSelect(fileNode *FileNode) {
@@ -432,11 +477,13 @@ func (t *TreeView) OnSelect(fileNode *FileNode) {
 	}
 
 	t.selectedNode = fileNode
-	state := t.GetState(fileNode.Path)
-	state.Expanded = fileNode.IsDir() && !state.Expanded
+	if fileNode != nil {
+		state := t.GetState(fileNode.Path)
+		state.Expanded = fileNode.IsDir() && !state.Expanded
 
-	if fileNode.IsDir() {
-		t.pendingRebuild = true
+		if fileNode.IsDir() {
+			t.pendingRebuild = true
+		}
 	}
 }
 
@@ -531,6 +578,13 @@ func (t *TreeView) findVisibleNode(path string) *FlatNode {
 	return &t.visibleNodes[idx]
 }
 
+// StartEditing turn the node into a editable state to edit its name.
+func (t *TreeView) StartEditing(gtx layout.Context, node *FileNode) {
+	nodeState := t.GetState(node.Path)
+	nodeState.Editable.SetEditing(true)
+	gtx.Execute(op.InvalidateCmd{})
+}
+
 /*
 // Restore restores the tree states by applying state to the current node and its children.
 func (t *TreeView) Restore(state *TreeState) error {
@@ -579,3 +633,12 @@ func (t *TreeView) Snapshot() *TreeState {
 	return state
 }
 */
+
+func (t *TreeView) getContextMenuOptions(node *FileNode) [][]menu.MenuOption {
+	if node == nil {
+		return nil
+	}
+
+	menuOptionFunc := FileTreeMenuOptions(t.vm, t)
+	return menuOptionFunc(node)
+}

@@ -156,12 +156,9 @@ func (fn *FlatNode) Update(gtx layout.Context, tree *TreeView) error {
 }
 
 func (fn *FlatNode) processDndEvents(gtx layout.Context, state *NodeState, tree *TreeView) error {
-	if gtx.Focused(fn.Node) {
-		log.Println("node focused: ", fn.Node.Path)
-	}
 	filters := []event.Filter{
 		// Detect if pointer is inside of the dir item, so we can highlight it when dropping items to it.
-		pointer.Filter{Target: fn.Node, Kinds: pointer.Enter | pointer.Leave},
+		pointer.Filter{Target: fn.Node, Kinds: pointer.Enter | pointer.Leave | pointer.Press},
 		transfer.TargetFilter{Target: fn.Node, Type: mimeDnd},
 	}
 
@@ -182,6 +179,12 @@ func (fn *FlatNode) processDndEvents(gtx layout.Context, state *NodeState, tree 
 			case pointer.Leave:
 				state.Entered = false
 				tree.UpdateDropTarget(nil)
+			case pointer.Press:
+				if event.Buttons == pointer.ButtonSecondary {
+					tree.OnContextNodeChange(fn.Node)
+				} else {
+					tree.OnContextNodeChange(nil)
+				}
 			}
 		case transfer.InitiateEvent:
 			state.DndInited = true

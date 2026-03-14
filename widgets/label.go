@@ -84,14 +84,13 @@ func (l *InteractiveLabel) layoutBackground(gtx layout.Context, th *theme.Theme)
 		return layout.Dimensions{Size: gtx.Constraints.Min}
 	}
 
+	var border widget.Border
 	if l.activated {
-		return widget.Border{
+		border = widget.Border{
 			Color:        th.ContrastBg,
 			CornerRadius: l.Radius,
 			Width:        unit.Dp(1),
-		}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-			return layout.Dimensions{Size: gtx.Constraints.Min}
-		})
+		}
 	}
 
 	var fill color.NRGBA
@@ -111,9 +110,18 @@ func (l *InteractiveLabel) layoutBackground(gtx layout.Context, th *theme.Theme)
 		NW: rr,
 		SW: rr,
 	}
-	paint.FillShape(gtx.Ops, fill, rect.Op(gtx.Ops))
 
-	return layout.Dimensions{Size: gtx.Constraints.Min}
+	defer rect.Push(gtx.Ops).Pop()
+	paint.ColorOp{Color: fill}.Add(gtx.Ops)
+	paint.PaintOp{}.Add(gtx.Ops)
+
+	if border == (widget.Border{}) {
+		return layout.Dimensions{Size: gtx.Constraints.Min}
+	}
+
+	return border.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+		return layout.Dimensions{Size: gtx.Constraints.Min}
+	})
 }
 
 func (l *InteractiveLabel) Layout(gtx C, th *theme.Theme, w func(gtx C, textColor color.NRGBA) D) D {

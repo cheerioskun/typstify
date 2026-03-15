@@ -5,8 +5,10 @@ import (
 	"image/color"
 	"io"
 	"log"
+	"math"
 	"strings"
 
+	"gioui.org/f32"
 	"gioui.org/io/event"
 	"gioui.org/io/pointer"
 	"gioui.org/io/transfer"
@@ -30,6 +32,14 @@ const (
 
 	dragThresholdPixel = 6
 )
+
+// Detect if the dragging exceeds the threshold.
+// offset is the drag position relative to its original click position.
+func detectDragByOffset(offset f32.Point) bool {
+	distance := math.Sqrt(float64(offset.X*offset.X) + float64(offset.Y*offset.Y))
+
+	return int(math.Round(distance)) > dragThresholdPixel
+}
 
 func (fn *FlatNode) Layout(gtx layout.Context, th *theme.Theme, textColor color.NRGBA, tree *TreeView) layout.Dimensions {
 	fn.Update(gtx, tree)
@@ -117,8 +127,7 @@ func (fn *FlatNode) layoutDraggingBox(gtx layout.Context, th *theme.Theme) layou
 	}
 
 	offset := fn.State.Draggable.Pos()
-	// Detect if the dragging exceeds the threshold.
-	if offset.Round().X < dragThresholdPixel && offset.Round().Y < dragThresholdPixel {
+	if !detectDragByOffset(offset) {
 		return layout.Dimensions{}
 	}
 
@@ -174,11 +183,11 @@ func (fn *FlatNode) processDndEvents(gtx layout.Context, state *NodeState, tree 
 			case pointer.Enter:
 				state.Entered = true
 				if state.DndInited {
-					tree.UpdateDropTarget(fn.Node)
+					tree.UpdateDropTarget(fn.Node, false)
 				}
 			case pointer.Leave:
 				state.Entered = false
-				tree.UpdateDropTarget(nil)
+				tree.UpdateDropTarget(fn.Node, true)
 			case pointer.Press:
 				if event.Buttons == pointer.ButtonSecondary {
 					tree.OnContextNodeChange(fn.Node)
@@ -188,7 +197,6 @@ func (fn *FlatNode) processDndEvents(gtx layout.Context, state *NodeState, tree 
 			}
 		case transfer.InitiateEvent:
 			state.DndInited = true
-
 		case transfer.CancelEvent:
 			state.DndInited = false
 			state.Entered = false

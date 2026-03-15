@@ -195,15 +195,15 @@ func (t *TreeView) layout(gtx layout.Context, th *theme.Theme, dropTarget *FileN
 		flatNode := t.visibleNodes[index]
 		state := t.GetState(flatNode.Node.Path)
 
-		// Highlight nodes if the target is a folder, or its parent folder.
-		highlightRow := dropTarget == flatNode.Node || (dropTarget == flatNode.Node.Parent && dropTarget != t.root)
+		// skip root as root needs to paint the entire wiget with the background color.
+		highlightRow := dropTarget != t.root && shouldHighlight(dropTarget, flatNode.Node)
 
 		// Render the actual row
 		return t.layoutRow(gtx, th, flatNode, state, highlightRow)
 	})
 }
 
-func (t *TreeView) layoutRow(gtx layout.Context, th *theme.Theme, flatNode FlatNode, state *NodeState, isDroppable bool) layout.Dimensions {
+func (t *TreeView) layoutRow(gtx layout.Context, th *theme.Theme, flatNode FlatNode, state *NodeState, highlight bool) layout.Dimensions {
 	// Process click of the node.
 	if state.Label.Update(gtx) {
 		t.OnSelect(flatNode.Node)
@@ -220,7 +220,7 @@ func (t *TreeView) layoutRow(gtx layout.Context, th *theme.Theme, flatNode FlatN
 	}
 
 	// draw a highlighted background for the potential drop target.
-	if isDroppable {
+	if highlight {
 		paint.ColorOp{Color: misc.WithAlpha(th.ContrastBg, th.HoverAlpha)}.Add(gtx.Ops)
 		paint.PaintOp{}.Add(gtx.Ops)
 	}
@@ -502,8 +502,20 @@ func (t *TreeView) OnSelect(fileNode *FileNode) {
 	}
 }
 
-func (t *TreeView) UpdateDropTarget(destNode *FileNode) {
+func (t *TreeView) UpdateDropTarget(destNode *FileNode, isLeave bool) {
 	if destNode == nil {
+		return
+	}
+
+	if isLeave {
+		previousTarget := t.currentDropTarget
+		// enter and leave may not happen sequentially, usually it is like:
+		// A-enter, B-enter, A-leave,...
+		// So we have to check if we are reseting the right node.
+		if previousTarget != nil && previousTarget != destNode {
+			return
+		}
+
 		if t.droppable() {
 			t.currentDropTarget = t.root
 			return
@@ -558,6 +570,10 @@ func (t *TreeView) OnDropped(destNode *FileNode, sourcePath string) {
 
 		return nil
 	}
+
+	defer func() {
+		t.currentDropTarget = nil
+	}()
 
 	srcNode := t.findVisibleNode(sourcePath)
 

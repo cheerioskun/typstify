@@ -37,3 +37,40 @@ type FlatNode struct {
 	VerticalPadding unit.Dp
 	IndentUnit      unit.Dp
 }
+
+func isAncestor(ancestor, childNode *FileNode) bool {
+	if ancestor == nil || childNode == nil {
+		return false
+	}
+
+	parent := childNode.Parent
+	for {
+		if parent == ancestor {
+			return true
+		}
+
+		parent = parent.Parent
+		if parent == nil { // root node in explorer.EntryNode set parent to nil
+			return false
+		}
+	}
+
+}
+
+// shouldHighlight checks if currentNode should be highlighted given the DnD
+// target node. targetNode is always a dir or nil.
+func shouldHighlight(targetNode, currentNode *FileNode) bool {
+	if targetNode == nil {
+		return false
+	}
+
+	if targetNode == currentNode {
+		return true
+	}
+
+	if isAncestor(targetNode, currentNode) {
+		return true
+	}
+
+	return false
+}

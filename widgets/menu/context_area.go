@@ -138,7 +138,7 @@ func (r *ContextArea) Layout(gtx C, w layout.Widget) D {
 	op.Defer(gtx.Ops, contextual)
 
 	// Capture pointer events in the contextual area.
-	defer pointer.PassOp{}.Push(gtx.Ops).Pop()
+	//defer pointer.PassOp{}.Push(gtx.Ops).Pop()
 	defer clip.Rect(image.Rectangle{Max: gtx.Constraints.Min}).Push(gtx.Ops).Pop()
 	event.Op(gtx.Ops, r)
 

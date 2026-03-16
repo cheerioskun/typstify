@@ -21,7 +21,7 @@ import (
 	"gioui.org/widget/material"
 	"github.com/oligo/gioview/misc"
 	"github.com/oligo/gioview/theme"
-	gv "github.com/oligo/gioview/widget"
+	"looz.ws/typstify/widgets"
 )
 
 const (
@@ -75,7 +75,7 @@ func (fn *FlatNode) Layout(gtx layout.Context, th *theme.Theme, textColor color.
 
 func (fn *FlatNode) layout(gtx layout.Context, th *theme.Theme, textColor color.NRGBA) layout.Dimensions {
 	if fn.State.Editable == nil {
-		fn.State.Editable = gv.EditableLabel(fn.Node.Name(), func(text string) {
+		fn.State.Editable = widgets.EditableLabel(fn.Node.Name(), func(text string) {
 			err := fn.Node.UpdateName(text)
 			if err != nil {
 				log.Println("err: ", err)
@@ -110,7 +110,7 @@ func (fn *FlatNode) layout(gtx layout.Context, th *theme.Theme, textColor color.
 				}),
 				layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
 					gtx.Constraints.Min.X = gtx.Constraints.Max.X
-					return fn.State.Editable.Layout(gtx, th)
+					return fn.State.Editable.Layout(gtx, th.Theme)
 				}),
 			)
 		},

@@ -26,9 +26,9 @@ import (
 	"github.com/oligo/gioview/misc"
 	"github.com/oligo/gioview/theme"
 	"github.com/oligo/gioview/view"
-	gv "github.com/oligo/gioview/widget"
 	"golang.org/x/exp/shiny/materialdesign/icons"
 	"looz.ws/typstify/utils"
+	"looz.ws/typstify/widgets"
 	"looz.ws/typstify/widgets/menu"
 )
 
@@ -74,6 +74,7 @@ type TreeView struct {
 	dndInited      bool
 
 	OnFileCreatedFunc func(node *FileNode)
+	OnFileRemoveFunc  func(node *FileNode) bool
 	OnDropConfirmFunc OnDropConfirmFunc
 	OnErrorFunc       func(err error)
 }
@@ -234,7 +235,11 @@ func (t *TreeView) update(gtx layout.Context) {
 	// and won't overwrite t.contextMenu.Show in OnContextNodeChange.
 	t.contextMenu.Update(gtx)
 
-	t.processKeyEvents(gtx)
+	err := t.processKeyEvents(gtx)
+	if t.OnErrorFunc != nil {
+		log.Println("filetree error: ", err)
+		t.OnErrorFunc(err)
+	}
 }
 
 func (t *TreeView) processKeyEvents(gtx layout.Context) error {
@@ -265,7 +270,7 @@ func (t *TreeView) processKeyEvents(gtx layout.Context) error {
 			// Initiate a paste operation, by requesting the clipboard contents; other
 			// half is in DataEvent.
 			case "V":
-				t.onPasteInit(gtx)
+				t.onPasteByShortcut(gtx)
 			// Copy or Cut selection -- ignored if nothing selected.
 			case "C", "X":
 				t.OnCopyOrCut(gtx, t.selectedNode, event.Name == "X")
@@ -316,7 +321,12 @@ func (t *TreeView) processKeyEvents(gtx layout.Context) error {
 			switch event.Type {
 			case mimeText: // when using MacOS, path paste is handled directly in key.Event 'cmd+V'
 				paths := parseClipboardPaths(string(content))
-				if err := t.OnPaste(paths, t.selectedNode); err != nil {
+				// Guess which kind of node we should operating on.
+				targetNode := t.contextNode
+				if targetNode == nil {
+					targetNode = t.selectedNode
+				}
+				if err := t.OnPaste(paths, targetNode); err != nil {
 					return err
 				}
 			case mimeDnd:
@@ -353,7 +363,7 @@ func (t *TreeView) CreateChild(gtx layout.Context, parent *FileNode, kind explor
 		t.OnFileCreatedFunc(childNode)
 	}
 
-	childNodeState.Editable = gv.EditableLabel(childNode.Name(), func(text string) {
+	childNodeState.Editable = widgets.EditableLabel(childNode.Name(), func(text string) {
 		err := childNode.UpdateName(text)
 		if err != nil {
 			log.Println("update name err: ", err)
@@ -372,20 +382,48 @@ func (t *TreeView) CreateChild(gtx layout.Context, parent *FileNode, kind explor
 	return nil
 }
 
-func (t *TreeView) Remove(node *FileNode) error {
-	if node == nil || !node.IsDir() {
-		return nil
+func (t *TreeView) Remove(node *FileNode) {
+	if node == nil {
+		return
 	}
 
-	err := node.Delete()
-	if err != nil {
-		return err
+	removeNode := func(n *FileNode) {
+		err := n.Delete()
+		if err != nil {
+			if t.OnErrorFunc != nil {
+				t.OnErrorFunc(err)
+			} else {
+				log.Println("remove file/folder error: ", err)
+			}
+		}
+		t.deleteState(n.Path)
+		t.pendingRebuild = true
 	}
 
-	return nil
+	if t.OnFileRemoveFunc != nil {
+		if t.OnFileRemoveFunc(node) {
+			removeNode(node)
+			return
+		}
+	} else {
+		removeNode(node)
+	}
 }
 
-func (t *TreeView) onPasteInit(gtx layout.Context) {
+// onPasteInit init the paste process by executing a clipboard.ReadCmd command,
+// or read from the OS clipboard and process the file urls directly. This method
+// is the keyboard shortcuts event handler.
+func (t *TreeView) onPasteByShortcut(gtx layout.Context) {
+	t.OnPasteByTarget(gtx, t.selectedNode)
+}
+
+// OnPasteByContextMenu works the same way like onPasteByShortcut, except that
+// it works on the contextNode instead of the selected node.
+func (t *TreeView) OnPasteByContextMenu(gtx layout.Context) {
+	t.OnPasteByTarget(gtx, t.contextNode)
+}
+
+func (t *TreeView) OnPasteByTarget(gtx layout.Context, targetNode *FileNode) {
 	paths := ReadClipboardFiles()
 	if len(paths) == 0 {
 		gtx.Execute(clipboard.ReadCmd{Tag: t})
@@ -393,7 +431,7 @@ func (t *TreeView) onPasteInit(gtx layout.Context) {
 	}
 
 	// else process the paste directly here
-	if err := t.OnPaste(paths, t.selectedNode); err != nil {
+	if err := t.OnPaste(paths, targetNode); err != nil {
 		log.Println("paste error: ", err)
 		if t.OnErrorFunc != nil {
 			t.OnErrorFunc(err)
@@ -421,7 +459,6 @@ func (t *TreeView) OnPaste(paths []string, dest *FileNode) error {
 	}
 
 	for _, p := range paths {
-
 		nodeState := t.GetState(p)
 		var opErr error
 		if nodeState.Cutted {

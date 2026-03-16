@@ -4,7 +4,6 @@ import (
 	"gioui.org/unit"
 	"gioui.org/widget"
 	"github.com/oligo/gioview/explorer"
-	gv "github.com/oligo/gioview/widget"
 	"looz.ws/typstify/widgets"
 )
 
@@ -19,7 +18,7 @@ type NodeState struct {
 	// entered and dnsInited are for Drag and Drop op.
 	Entered   bool
 	DndInited bool
-	Editable  *gv.Editable
+	Editable  *widgets.Editable
 	Label     widgets.InteractiveLabel
 }
 

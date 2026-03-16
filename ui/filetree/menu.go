@@ -16,7 +16,6 @@ import (
 	"github.com/oligo/gioview/theme"
 	"github.com/oligo/gioview/view"
 	"looz.ws/typstify/i18n"
-	"looz.ws/typstify/ui/dialog"
 	"looz.ws/typstify/widgets/menu"
 )
 
@@ -92,7 +91,7 @@ func FileTreeMenuOptions(vm view.ViewManager, tree *TreeView) MenuOptionFunc {
 
 		pasteOpt := menu.MenuOption{
 			OnClicked: func(gtx layout.Context) error {
-				gtx.Execute(clipboard.ReadCmd{Tag: tree})
+				tree.OnPasteByContextMenu(gtx)
 				gtx.Execute(op.InvalidateCmd{})
 
 				return nil
@@ -116,25 +115,26 @@ func FileTreeMenuOptions(vm view.ViewManager, tree *TreeView) MenuOptionFunc {
 
 		deleteOpt := menu.MenuOption{
 			OnClicked: func(gtx layout.Context) error {
-				go func() {
-					destPath := filepath.Clean(node.Path)
-					relPath, err := filepath.Rel(rootDir, destPath)
-					if err == nil {
-						destPath = relPath
-					}
+				// go func() {
+				// 	destPath := filepath.Clean(node.Path)
+				// 	relPath, err := filepath.Rel(rootDir, destPath)
+				// 	if err == nil {
+				// 		destPath = relPath
+				// 	}
 
-					caller := dialog.NewDialogChooser[bool](vm)
-					result, err := caller.Call(dialog.DeleteFileDialogViewID, map[string]any{"destination": destPath})
-					if err != nil {
-						log.Println("delete file error: ", err)
-					}
+				// 	caller := dialog.NewDialogChooser[bool](vm)
+				// 	result, err := caller.Call(dialog.DeleteFileDialogViewID, map[string]any{"destination": destPath})
+				// 	if err != nil {
+				// 		log.Println("delete file error: ", err)
+				// 	}
 
-					if result.Params {
-						if err := tree.Remove(node); err != nil {
-							log.Println("delete file error: ", err)
-						}
-					}
-				}()
+				// 	if result.Params {
+				// 		tree.Remove(node); err != nil {
+				// 			log.Println("delete file error: ", err)
+				// 		}
+				// 	}
+				// }()
+				tree.Remove(node)
 
 				return nil
 			},
@@ -184,20 +184,20 @@ func FileTreeMenuOptions(vm view.ViewManager, tree *TreeView) MenuOptionFunc {
 			}
 		}
 
-		common := [][]menu.MenuOption{
-			{copyOpt, cutOpt, pasteOpt},
+		if node.IsDir() {
+			// more options to create subfolder, files, remove files, rename files
+			return [][]menu.MenuOption{
+				{newFileOpt, newFolderOpt},
+				{copyOpt, cutOpt, pasteOpt},
+				{revealInExplorerOpt, copyPathOpt, copyRelativePathOpt, renameOpt, deleteOpt},
+			}
+		}
+
+		// Menu options for file node
+		return [][]menu.MenuOption{
+			{copyOpt, cutOpt},
 			{revealInExplorerOpt, copyPathOpt, copyRelativePathOpt, renameOpt, deleteOpt},
 		}
-
-		if node.IsDir() {
-			// create subfolder, files, remove files, rename files
-			dirOptions := []menu.MenuOption{newFileOpt, newFolderOpt}
-
-			dirOptions = append(dirOptions, common[0]...)
-			common[0] = dirOptions
-		}
-
-		return common
 	}
 }
 

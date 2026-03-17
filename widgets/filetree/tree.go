@@ -74,7 +74,7 @@ type TreeView struct {
 	dndInited      bool
 
 	OnFileCreatedFunc  func(node *FileNode)
-	OnFileRemoveFunc   func(node *FileNode) bool
+	OnFileRemoveFunc   func(node *FileNode)
 	OnFileSelectedFunc func(node *FileNode)
 	OnDropConfirmFunc  OnDropConfirmFunc
 	OnErrorFunc        func(err error)
@@ -388,32 +388,34 @@ func (t *TreeView) CreateChild(gtx layout.Context, parent *FileNode, kind explor
 	return nil
 }
 
+func (t *TreeView) OnRemove(node *FileNode) {
+	if node == nil {
+		return
+	}
+
+	if t.OnFileRemoveFunc != nil {
+		t.OnFileRemoveFunc(node)
+		return
+	} else {
+		t.Remove(node)
+	}
+}
+
 func (t *TreeView) Remove(node *FileNode) {
 	if node == nil {
 		return
 	}
 
-	removeNode := func(n *FileNode) {
-		err := n.Delete()
-		if err != nil {
-			if t.OnErrorFunc != nil {
-				t.OnErrorFunc(err)
-			} else {
-				log.Println("remove file/folder error: ", err)
-			}
+	err := node.Delete()
+	if err != nil {
+		if t.OnErrorFunc != nil {
+			t.OnErrorFunc(err)
+		} else {
+			log.Println("remove file/folder error: ", err)
 		}
-		t.deleteState(n.Path)
-		t.pendingRebuild = true
 	}
-
-	if t.OnFileRemoveFunc != nil {
-		if t.OnFileRemoveFunc(node) {
-			removeNode(node)
-			return
-		}
-	} else {
-		removeNode(node)
-	}
+	t.deleteState(node.Path)
+	t.pendingRebuild = true
 }
 
 // onPasteInit init the paste process by executing a clipboard.ReadCmd command,

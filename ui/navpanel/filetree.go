@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
-	"sync"
 	"unicode/utf8"
 
 	"gioui.org/font"
@@ -207,12 +206,10 @@ func (tn *FileTreeNav) onFileSelected(node *filetree.FileNode) {
 	}
 }
 
-func (tn *FileTreeNav) onFileDeleted(node *filetree.FileNode) bool {
+func (tn *FileTreeNav) onFileDeleted(node *filetree.FileNode) {
 	rootDir := tn.tree.Root()
-	var wg sync.WaitGroup
-	var userConfirm bool
 
-	wg.Go(func() {
+	go func() {
 		destPath := filepath.Clean(node.Path)
 		relPath, err := filepath.Rel(rootDir, destPath)
 		if err == nil {
@@ -220,16 +217,16 @@ func (tn *FileTreeNav) onFileDeleted(node *filetree.FileNode) bool {
 		}
 
 		caller := dialog.NewDialogChooser[bool](tn.vm)
+		// It's a blocking call, should call it on a separated goroutine.
 		result, err := caller.Call(dialog.DeleteFileDialogViewID, map[string]any{"destination": destPath})
 		if err != nil {
 			log.Println("delete file error: ", err)
 		}
 
-		userConfirm = result.Params
-	})
-
-	wg.Wait()
-	return userConfirm
+		if result.Params {
+			tn.tree.Remove(node)
+		}
+	}()
 }
 
 func onDropConfirmFunc(vm view.ViewManager, rootDir string) filetree.OnDropConfirmFunc {

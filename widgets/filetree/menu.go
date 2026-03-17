@@ -114,7 +114,7 @@ func FileTreeMenuOptions(tree *TreeView) MenuOptionFunc {
 
 		deleteOpt := menu.MenuOption{
 			OnClicked: func(gtx layout.Context) error {
-				tree.Remove(node)
+				tree.OnRemove(node)
 				return nil
 			},
 

@@ -4,7 +4,6 @@ import (
 	"image"
 	"image/color"
 	"io"
-	"log"
 	"math"
 	"strings"
 
@@ -21,7 +20,6 @@ import (
 	"gioui.org/widget/material"
 	"github.com/oligo/gioview/misc"
 	"github.com/oligo/gioview/theme"
-	"looz.ws/typstify/widgets"
 )
 
 const (
@@ -41,9 +39,7 @@ func detectDragByOffset(offset f32.Point) bool {
 	return int(math.Round(distance)) > dragThresholdPixel
 }
 
-func (fn *FlatNode) Layout(gtx layout.Context, th *theme.Theme, textColor color.NRGBA, tree *TreeView) layout.Dimensions {
-	fn.Update(gtx, tree)
-
+func (fn *FlatNode) Layout(gtx layout.Context, th *theme.Theme) layout.Dimensions {
 	inset := layout.Inset{
 		Top:    fn.VerticalPadding,
 		Bottom: fn.VerticalPadding,
@@ -55,7 +51,7 @@ func (fn *FlatNode) Layout(gtx layout.Context, th *theme.Theme, textColor color.
 	dims := fn.State.Label.Layout(gtx, th, func(gtx layout.Context, color color.NRGBA) layout.Dimensions {
 		return inset.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
 			return layout.W.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-				return fn.layout(gtx, th, textColor)
+				return fn.layout(gtx, th)
 			})
 		})
 	})
@@ -73,19 +69,7 @@ func (fn *FlatNode) Layout(gtx layout.Context, th *theme.Theme, textColor color.
 	return dims
 }
 
-func (fn *FlatNode) layout(gtx layout.Context, th *theme.Theme, textColor color.NRGBA) layout.Dimensions {
-	if fn.State.Editable == nil {
-		fn.State.Editable = widgets.EditableLabel(fn.Node.Name(), func(text string) {
-			err := fn.Node.UpdateName(text)
-			if err != nil {
-				log.Println("err: ", err)
-			}
-		})
-	}
-
-	fn.State.Editable.Color = textColor
-	fn.State.Editable.TextSize = th.TextSize
-
+func (fn *FlatNode) layout(gtx layout.Context, th *theme.Theme) layout.Dimensions {
 	return fn.State.Draggable.Layout(gtx,
 		func(gtx layout.Context) layout.Dimensions {
 			return layout.Flex{Alignment: layout.Middle}.Layout(gtx,

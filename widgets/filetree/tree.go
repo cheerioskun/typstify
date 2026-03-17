@@ -6,6 +6,7 @@ import (
 	"image"
 	"io"
 	"log"
+	"path/filepath"
 	"slices"
 	"strings"
 
@@ -72,6 +73,7 @@ type TreeView struct {
 	pendingRebuild bool
 	pointerEntered bool
 	dndInited      bool
+	isEditingNode  bool
 
 	OnFileCreatedFunc  func(node *FileNode)
 	OnFileRemoveFunc   func(node *FileNode)
@@ -104,6 +106,7 @@ func (t *TreeView) GetState(path string) *NodeState {
 		return state
 	}
 	newState := &NodeState{}
+	newState.Editable = widgets.EditableLabel(filepath.Base(path))
 	t.states[path] = newState
 	return newState
 }
@@ -137,6 +140,10 @@ func (t *TreeView) flatten(node *FileNode, depth int) {
 	}
 
 	if node == t.root || (state.Expanded && node.IsDir()) {
+		// Refresh update existing children, insert new nodes, remove already
+		// deleted ones, so its safe to call it as existing nodes does not change
+		// its pointer.
+		node.Refresh(nil)
 		for _, child := range node.Children() {
 			t.flatten(child, depth+1)
 		}
@@ -199,6 +206,19 @@ func (t *TreeView) layout(gtx layout.Context, th *theme.Theme, dropTarget *FileN
 	return list.Layout(gtx, len(t.visibleNodes), func(gtx layout.Context, index int) layout.Dimensions {
 		flatNode := t.visibleNodes[index]
 		state := t.GetState(flatNode.Node.Path)
+		state.Editable.OnChanged = func(text string) {
+			t.isEditingNode = false
+			err := flatNode.Node.UpdateName(text)
+			if err != nil {
+				log.Println("err: ", err)
+				return
+			}
+		}
+		state.Editable.Color = th.Fg
+		state.Editable.TextSize = th.TextSize
+
+		// after rename, the state will change, so we need to update its state
+		flatNode.State = state
 
 		// skip root as root needs to paint the entire wiget with the background color.
 		highlightRow := dropTarget != t.root && shouldHighlight(dropTarget, flatNode.Node)
@@ -214,9 +234,10 @@ func (t *TreeView) layoutRow(gtx layout.Context, th *theme.Theme, flatNode FlatN
 		t.OnSelect(flatNode.Node)
 		gtx.Execute(op.InvalidateCmd{})
 	}
+	flatNode.Update(gtx, t)
 
 	macro := op.Record(gtx.Ops)
-	dims := flatNode.Layout(gtx, th, th.Fg, t)
+	dims := flatNode.Layout(gtx, th)
 	callOp := macro.Stop()
 
 	defer clip.Rect(image.Rectangle{Max: dims.Size}).Push(gtx.Ops).Pop()
@@ -289,6 +310,10 @@ func (t *TreeView) processKeyEvents(gtx layout.Context) error {
 			case pointer.Leave:
 				t.pointerEntered = false
 			case pointer.Press:
+				if t.isEditingNode {
+					// user is editing node name, clicking should focus the editable, not the treeView.
+					continue
+				}
 				// let treeView to grab the focus, so we can do copy/cut/paste
 				gtx.Execute(key.FocusCmd{Tag: t})
 				// also update context node
@@ -363,22 +388,11 @@ func (t *TreeView) CreateChild(gtx layout.Context, parent *FileNode, kind explor
 
 	childNode := parent.Children()[0]
 
-	childNodeState := t.GetState(childNode.Path)
-
 	if t.OnFileCreatedFunc != nil {
 		t.OnFileCreatedFunc(childNode)
 	}
 
-	childNodeState.Editable = widgets.EditableLabel(childNode.Name(), func(text string) {
-		err := childNode.UpdateName(text)
-		if err != nil {
-			log.Println("update name err: ", err)
-			return
-		}
-	})
-
-	// focus the child input
-	childNodeState.Editable.SetEditing(true)
+	t.StartEditing(gtx, childNode)
 
 	// Expand parent folder
 	nodeState := t.GetState(parent.Path)
@@ -669,6 +683,7 @@ func (t *TreeView) findVisibleNode(path string) *FlatNode {
 func (t *TreeView) StartEditing(gtx layout.Context, node *FileNode) {
 	nodeState := t.GetState(node.Path)
 	nodeState.Editable.SetEditing(true)
+	t.isEditingNode = true
 	gtx.Execute(op.InvalidateCmd{})
 }
 

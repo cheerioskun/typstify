@@ -17,9 +17,11 @@ import (
 
 // Editable is an editable label that layouts an editor in responds to clicking.
 type Editable struct {
-	Text      string
-	TextSize  unit.Sp
-	Color     color.NRGBA
+	Text     string
+	TextSize unit.Sp
+	Color    color.NRGBA
+
+	//The callback to be called when Text is changed.
 	OnChanged func(text string)
 
 	editor        wg.Editor
@@ -28,10 +30,9 @@ type Editable struct {
 	editing       bool
 }
 
-func EditableLabel(text string, onChanged func(text string)) *Editable {
+func EditableLabel(text string) *Editable {
 	return &Editable{
-		Text:      text,
-		OnChanged: onChanged,
+		Text: text,
 	}
 }
 
@@ -39,6 +40,10 @@ func (e *Editable) SetEditing(editing bool) {
 	e.editing = editing
 	e.editor.SetText(e.Text)
 	e.editor.SetCaret(0, e.editor.Len())
+}
+
+func (e *Editable) IsEditing() bool {
+	return e.editing
 }
 
 func (e *Editable) Update(gtx C) {

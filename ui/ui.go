@@ -3,7 +3,6 @@ package ui
 import (
 	"context"
 	"log"
-	"os"
 	"runtime/debug"
 
 	"gioui.org/app"
@@ -104,10 +103,6 @@ func (ui *UI) Loop(ctx context.Context) error {
 }
 
 func (ui *UI) Layout(gtx C) D {
-	if ui.srv.DeviceBlocked {
-		os.Exit(1)
-	}
-
 	defer func() {
 		if r := recover(); r != nil {
 			ui.crashReport = &CrashReport{}

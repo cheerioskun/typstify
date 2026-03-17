@@ -2,10 +2,8 @@ package service
 
 import (
 	"context"
-	"errors"
 	"io"
 	"log"
-	"net/http"
 	"time"
 
 	"github.com/oligo/gioview/explorer"
@@ -33,7 +31,6 @@ type ServiceFacade struct {
 	consoleState       *console.ConsoleState
 
 	currentProjectDir string
-	DeviceBlocked     bool
 
 	// Window layout metrics for native webview positioning.
 	// Set by the home view each frame.
@@ -127,13 +124,6 @@ func (s *ServiceFacade) RegisterDevice() {
 		req.Timezone = tz
 
 		err := api.RegisterDevice(req)
-		if errors.As(err, &net.NetworkError{}) {
-			netErr := err.(net.NetworkError)
-			if netErr.StatusCode == http.StatusForbidden {
-				s.DeviceBlocked = true
-			}
-		}
-
 		if err != nil {
 			log.Println("Register device failed: ", err)
 		}

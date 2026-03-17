@@ -300,14 +300,6 @@ func (te *TypstEditor) OnFinish() {
 }
 
 func (te *TypstEditor) onExportFile(params *typst.CompileParams) {
-	// always export the main file.
-	// file, err := os.Open(te.targetFile)
-	// if err != nil {
-	// 	log.Println("export PDF error: ", err)
-	// 	te.srv.EventBus().Emit(bus.TopicStatusbarNotifyEvent, statusbar.Notification{Content: "File export error: " + err.Error()})
-	// 	return
-	// }
-
 	settings := te.srv.Settings().Typst()
 
 	if settings.UseSysInputs != 0 {
@@ -325,15 +317,19 @@ func (te *TypstEditor) onExportFile(params *typst.CompileParams) {
 	params.Options.IgnoreSystemFonts = settings.IgnoreSystemFonts == 1
 	params.Options.IgnoreEmbeddedFonts = settings.IgnoreEmbeddedFonts == 1
 
-	params.Options.Features = "html" // enable HTML export
+	params.InputFile = te.targetFile
+	params.OutDir = filepath.Join(filepath.Dir(te.targetFile), "output")
+	if settings.OutputDir != "" {
+		params.OutDir = settings.OutputDir
+	}
+
 	if settings.BuildDeps == 1 {
-		params.Options.Deps = filepath.Join(filepath.Dir(te.targetFile), "deps.json")
+		params.Options.Deps = filepath.Join(params.OutDir, "deps.json")
 		params.Options.DepsFormat = "json"
 	}
 
-	params.InputFile = te.targetFile
-	params.OutDir = filepath.Join(filepath.Dir(te.targetFile), "output")
 	params.CmdOut = te.srv.Console()
+	params.Options.Features = "html" // enable HTML export
 
 	if params.OutFilename == "" {
 		params.OutFilename = strings.TrimSuffix(filepath.Base(te.targetFile), filepath.Ext(te.targetFile))

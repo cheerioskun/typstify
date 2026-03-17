@@ -68,6 +68,7 @@ type TypstSettings struct {
 	IgnoreSystemFonts   int    `key:"ignoreSystemFonts"`
 	IgnoreEmbeddedFonts int    `key:"ignoreEmbeddedFonts"`
 	BuildDeps           int    `key:"buildDeps"`
+	OutputDir           string `key:"outputDir"`
 }
 
 func (g *GeneralSettings) Save() error {
@@ -189,6 +190,12 @@ func (t *TypstSettings) Validate() error {
 		}
 	}
 
+	if t.OutputDir != "" {
+		if err := isDir(t.OutputDir); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 
@@ -239,5 +246,6 @@ func init() {
 		UseSysInputs:        1,
 		ExtraFontPath:       "",
 		BuildDeps:           0,
+		OutputDir:           "",
 	}
 }

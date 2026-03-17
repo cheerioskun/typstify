@@ -70,6 +70,7 @@ type TypstSettingsView struct {
 	cacheDirInput       gvwidget.TextField
 	pkgDirInput         gvwidget.TextField
 	fontPathInput       gvwidget.TextField
+	outputDirInput      gvwidget.TextField
 	ignoreSystemFonts   widget.Bool
 	ignoreEmbeddedFonts widget.Bool
 	buildDeps           widget.Bool
@@ -584,6 +585,7 @@ func (t *TypstSettingsView) Layout(gtx C, th *theme.Theme) D {
 		t.cacheDirInput.SetText(t.setting.PackageCacheDir)
 		t.pkgDirInput.SetText(t.setting.PackageDir)
 		t.fontPathInput.SetText(t.setting.ExtraFontPath)
+		t.outputDirInput.SetText(t.setting.OutputDir)
 		t.typstVersion = typst.CurrentVersion()
 		t.lspVersion = lsp.Version()
 		t.ignoreSystemFonts = widget.Bool{Value: t.setting.IgnoreSystemFonts != 0}
@@ -605,6 +607,11 @@ func (t *TypstSettingsView) Layout(gtx C, th *theme.Theme) D {
 
 		if t.fontPathInput.Changed() || t.fontPathInput.Submitted() {
 			t.setting.ExtraFontPath = t.fontPathInput.Text()
+			doUpdate = true
+		}
+
+		if t.outputDirInput.Changed() || t.outputDirInput.Submitted() {
+			t.setting.OutputDir = t.outputDirInput.Text()
 			doUpdate = true
 		}
 
@@ -704,6 +711,15 @@ func (t *TypstSettingsView) Layout(gtx C, th *theme.Theme) D {
 				func(gtx C) D {
 					t.fontPathInput.Alignment = text.Start
 					return t.fontPathInput.Layout(gtx, th, "")
+				})
+		}),
+
+		layout.Rigid(func(gtx C) D {
+			return settingItem{}.Layout(gtx, th, i18n.Translate("Export Dir"),
+				i18n.Translate("The directory to save exported files to, including the deps.json. If not set, the exported files will be saved to a 'output' folder beside the source file."),
+				func(gtx C) D {
+					t.outputDirInput.Alignment = text.Start
+					return t.outputDirInput.Layout(gtx, th, "")
 				})
 		}),
 

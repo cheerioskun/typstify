@@ -40,8 +40,8 @@ type GeneralSettings struct {
 
 	EnableLSPLogs        int    `key:"enableLspLogs"`
 	EnablePowerSaving    int    `key:"enablePowerSaving"`
-	ExternalTypst        string `key:"externalTypst"`    // typst dir
-	ExternalTinymist     string `key:"externalTinymist"` // tinymist dir
+	ExternalTypst        string `key:"externalTypst"`    // typst executable path
+	ExternalTinymist     string `key:"externalTinymist"` // tinymist executable path
 	OpenPreviewInBrowser int    `key:"openPreviewInBrowser"`
 }
 
@@ -97,13 +97,13 @@ func (g *GeneralSettings) Validate() error {
 	}
 
 	if g.ExternalTypst != "" {
-		if err := isDir(g.ExternalTypst); err != nil {
+		if err := isFile(g.ExternalTypst); err != nil {
 			return err
 		}
 	}
 
 	if g.ExternalTinymist != "" {
-		if err := isDir(g.ExternalTinymist); err != nil {
+		if err := isFile(g.ExternalTinymist); err != nil {
 			return err
 		}
 	}
@@ -199,18 +199,6 @@ func (t *TypstSettings) Validate() error {
 	return nil
 }
 
-func isDir(path string) error {
-	stat, err := os.Stat(path)
-	if err != nil {
-		return err
-	}
-	if !stat.IsDir() {
-		return fmt.Errorf("%s is not a directory", path)
-	}
-
-	return nil
-}
-
 func init() {
 	// do a initialize here:
 	defaultGeneralSettings = &GeneralSettings{
@@ -248,4 +236,29 @@ func init() {
 		BuildDeps:           0,
 		OutputDir:           "",
 	}
+}
+
+func isDir(path string) error {
+	stat, err := os.Stat(path)
+	if err != nil {
+		return err
+	}
+	if !stat.IsDir() {
+		return fmt.Errorf("%s is not a directory", path)
+	}
+
+	return nil
+}
+
+func isFile(path string) error {
+	st, err := os.Stat(path)
+	if err != nil {
+		return fmt.Errorf("%s cannot be accessed", path)
+	}
+
+	if st.IsDir() {
+		return fmt.Errorf("%s is a directory", path)
+	}
+
+	return nil
 }

@@ -38,11 +38,7 @@ func (s *Server) Start(ctx context.Context) error {
 		return errors.New("server is already running!")
 	}
 
-	_, err := exec.LookPath(lspServerName)
-	if err != nil {
-		return errors.Wrapf(err, "cannot find `%s` binary in path", lspServerName)
-	}
-
+	var err error
 	s.serverCmd, err = newLspServer(ctx)
 	if err != nil {
 		s.logger.Error("start server failed", "error", err)
@@ -108,7 +104,7 @@ type lspServer struct {
 }
 
 func newLspServer(ctx context.Context) (*lspServer, error) {
-	c := &lspServer{Cmd: newCmd(ctx, "lsp")}
+	c := &lspServer{Cmd: cmdBuilder.Build(ctx, "lsp")}
 
 	// Get pipes for stdin and stdout of the lsp server process
 	stdinPipe, err := c.StdinPipe()

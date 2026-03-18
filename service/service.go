@@ -42,22 +42,22 @@ func NewService(ctx context.Context) *ServiceFacade {
 	eventbus := bus.NewEventBus(ctx, false)
 	st := settings.NewSettings(eventbus)
 
-	// init executable lookup path.
-	lsp.Init(st.General().ExternalTinymist)
-	typst.Init(st.General().ExternalTypst)
-
 	s := &ServiceFacade{
-		eventbus:      eventbus,
-		settings:      st,
-		pkgService:    pkg.NewTypstPkgService(st.Typst()),
+		eventbus:     eventbus,
+		settings:     st,
+		pkgService:   pkg.NewTypstPkgService(st.Typst()),
 		workspaceSrv: NewWorkspaceService(st.General().RootDir),
-		windowSrv:     NewWindowService(ctx, st),
-		consoleState:  console.NewConsoleState(1000),
+		windowSrv:    NewWindowService(ctx, st),
+		consoleState: console.NewConsoleState(1000),
 	}
 
 	eventbus.Subscribe(s, "service.onSettingUpdate", bus.TopicSettingsUpdated, func(topic string, data interface{}) {
 		s.pkgService = pkg.NewTypstPkgService(st.Typst())
 	})
+
+	// init executable lookup path.
+	lsp.SetupCmdBuilder(s.settings.General().ExternalTinymist)
+	typst.SetupCmdBuilder(s.settings.General().ExternalTypst)
 
 	s.RegisterDevice()
 
@@ -164,6 +164,11 @@ func (s *ServiceFacade) CheckUpdate() *net.ReleaseInfo {
 
 func (s *ServiceFacade) SetProjectDir(dir string) {
 	s.currentProjectDir = dir
+
+	// init executable lookup path.
+	lsp.SetupCmdBuilder(s.settings.General().ExternalTinymist)
+	typst.SetupCmdBuilder(s.settings.General().ExternalTypst)
+
 	// connect to LSP server in an eager way.
 	client := lsp.GetLspClient(s.currentProjectDir, s.Settings())
 	if s.settings.General().EnableLSPLogs != 0 {

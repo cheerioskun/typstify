@@ -45,10 +45,6 @@ type CompileParams struct {
 
 // NewCompiler creates a compiler. pkgDir and cacheDir can be left empty to use the default.
 func NewCompiler(workDir string) (*Compiler, error) {
-	if _, err := exec.LookPath(executableName); err != nil {
-		return nil, err
-	}
-
 	c := &Compiler{
 		workDir: workDir,
 	}
@@ -136,7 +132,7 @@ func (t *Compiler) compile(ctx context.Context, opts *CompileParams) error {
 	args := []string{"compile"}
 	args = append(args, t.commonOptions(opts)...)
 
-	cmd := newCmd(ctx, args...)
+	cmd := cmdBuilder.Build(ctx, args...)
 	if opts.InputFile == "-" {
 		// setup a stdin pipe to read from a reader.
 		stdin, err := cmd.StdinPipe()
@@ -239,7 +235,7 @@ func (t *Compiler) watchAndCompile(ctx context.Context, opts *CompileParams) err
 	args := []string{"watch"}
 	args = append(args, t.commonOptions(opts)...)
 
-	cmd := newCmd(ctx, args...)
+	cmd := cmdBuilder.Build(ctx, args...)
 
 	// stderr, err := cmd.StderrPipe()
 	// if err != nil {

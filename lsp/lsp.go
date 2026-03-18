@@ -3,6 +3,7 @@ package lsp
 import (
 	"context"
 	"log"
+	"runtime"
 	"strings"
 
 	"looz.ws/typstify/service/settings"
@@ -11,13 +12,25 @@ import (
 
 var (
 	// Use a singleton to serve a workspace.
-	lspClient *Client
-	version   string
+	lspClient  *Client
+	version    string
+	cmdBuilder utils.CmdBuilder
 )
 
 // use init function to setup PATH.
-func Init(externalDir string) {
-	utils.LookupExecutable(lspServerName, externalDir)
+func SetupCmdBuilder(externalExe string) {
+	exists, isDir := utils.CheckFileExists(externalExe)
+	if exists && !isDir {
+		cmdBuilder.Path = externalExe
+	} else {
+		var exeName = "tinymist"
+		if runtime.GOOS == "windows" {
+			exeName = "tinymist.exe"
+		}
+		cmdBuilder.Path = exeName
+	}
+
+	cmdBuilder.DefaultArgs = []string{}
 }
 
 func GetLspClient(workspace string, setting *settings.Settings) *Client {
@@ -49,7 +62,7 @@ func StopLsp() {
 // Version returns the LSP server version.
 func Version() string {
 	if version == "" {
-		cmd := newCmd(context.Background(), "-V")
+		cmd := cmdBuilder.Build(context.Background(), "-V")
 		out, _ := cmd.Output()
 		version = strings.TrimSpace(string(out))
 	}

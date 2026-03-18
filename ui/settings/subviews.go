@@ -339,8 +339,8 @@ func (g *GeneralView) Layout(gtx C, th *theme.Theme) D {
 		}),
 
 		layout.Rigid(func(gtx C) D {
-			return settingItem{}.Layout(gtx, th, i18n.Translate("External Typst Compiler Dir"),
-				i18n.Translate("Specifies a directory containing your own version of Typst compiler. Leave it empty to use the built-in one. Please check the compatibility before you switch. It needs to restart to take effect."),
+			return settingItem{}.Layout(gtx, th, i18n.Translate("External Typst Compiler Path"),
+				i18n.Translate("Specifies a path to your own version of Typst compiler. Leave it empty to use the built-in one. Please check the compatibility before you switch. It needs to restart to take effect."),
 				func(gtx C) D {
 					g.externalTypstInput.Alignment = text.Start
 					return g.externalTypstInput.Layout(gtx, th, "")
@@ -348,8 +348,8 @@ func (g *GeneralView) Layout(gtx C, th *theme.Theme) D {
 		}),
 
 		layout.Rigid(func(gtx C) D {
-			return settingItem{}.Layout(gtx, th, i18n.Translate("External LSP Server(Tinymist) Dir"),
-				i18n.Translate("Specifies a directory containing your own version of Tinymist. Leave it empty to use the built-in one. Please check the compatibility before you switch. It needs to restart to take effect."),
+			return settingItem{}.Layout(gtx, th, i18n.Translate("External LSP Server(Tinymist) Path"),
+				i18n.Translate("Specifies a path to your own version of Tinymist. Leave it empty to use the built-in one. Please check the compatibility before you switch. It needs to restart to take effect."),
 				func(gtx C) D {
 					g.externalTinymistInput.Alignment = text.Start
 					return g.externalTinymistInput.Layout(gtx, th, "")

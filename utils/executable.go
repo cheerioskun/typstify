@@ -1,7 +1,7 @@
 package utils
 
 import (
-	"errors"
+	"context"
 	"log"
 	"os"
 	"os/exec"
@@ -9,27 +9,30 @@ import (
 	"runtime"
 )
 
-// LookupExecutable looks up the executable dir and add it the the PATH of the
-// current process.
-func LookupExecutable(exeName string, externalDir string) bool {
+// lookupExecutable looks up the executable path from the executable dir
+// and the process root dir, and existing PATH.
+func lookupExecutable(exeName string) string {
 	binDir := ""
-	if externalDir != "" {
-		binDir = externalDir
-	} else {
-		exePath, err := os.Executable()
-		if err == nil {
-			binDir = filepath.Dir(exePath)
-		}
+
+	currentExePath, err := os.Executable()
+	if err == nil {
+		binDir = filepath.Dir(currentExePath)
 	}
 
+	exePath := filepath.Join(binDir, exeName)
+	exists, isDir := CheckFileExists(exePath)
+
 	// Fallback to the process root dir.
-	if binDir == "" || !checkExists(binDir, exeName) {
+	if binDir == "" || !exists || isDir {
 		binDir, _ = filepath.Abs(".") // all 3 main OSes are supported.
 	}
 
-	if checkExists(binDir, exeName) {
+	exePath = filepath.Join(binDir, exeName)
+	exists, isDir = CheckFileExists(exePath)
+
+	if exists && !isDir {
 		// update permission to ensure it can be picked up by os.LookPath.
-		os.Chmod(filepath.Join(binDir, exeName), 0755)
+		os.Chmod(exePath, 0755)
 
 		pathEnv := os.Getenv("PATH")
 		if runtime.GOOS == "windows" {
@@ -40,23 +43,31 @@ func LookupExecutable(exeName string, externalDir string) bool {
 		}
 	}
 
-	if _, err := exec.LookPath(exeName); err != nil {
+	absPath, err := exec.LookPath(exeName)
+	if err != nil {
 		log.Printf("No %s found after searching PATH: %s", exeName, os.Getenv("PATH"))
-		return false
+		return ""
 	}
 
-	return true
+	return absPath
 }
 
-func checkExists(binDir string, exeName string) bool {
-	_, err := os.Stat(filepath.Join(binDir, exeName))
-	if err == nil {
-		return true
-	}
-	if errors.Is(err, os.ErrNotExist) {
-		return false
+type CmdBuilder struct {
+	DefaultArgs []string
+	Path        string
+}
+
+func (b *CmdBuilder) Build(ctx context.Context, args ...string) *exec.Cmd {
+	path := b.Path
+	if filepath.Base(path) == path {
+		path = lookupExecutable(path)
+	} else {
+		exists, isDir := CheckFileExists(path)
+		if !exists || isDir {
+			return nil
+		}
 	}
 
-	log.Println("cannot check if executable exist", err)
-	return true
+	args = append(b.DefaultArgs, args...)
+	return buildCmd(ctx, path, args...)
 }

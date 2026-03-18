@@ -1,19 +1,9 @@
 package typst
 
 import (
-	"context"
 	"fmt"
-	"log"
-	"regexp"
 	"strings"
-
-	"looz.ws/typstify/utils"
 )
-
-// use init function to setup PATH.
-func Init(externalDir string) {
-	utils.LookupExecutable(executableName, externalDir)
-}
 
 type OutFormat string
 
@@ -213,57 +203,4 @@ func (opt *InitCmdOptions) Build() []string {
 	}
 
 	return opts
-}
-
-func InitCmd(template string, dir string, opts *InitCmdOptions) error {
-	args := []string{"init"}
-	args = append(args, opts.Build()...)
-	args = append(args, template, dir)
-
-	cmd := newCmd(context.Background(), args...)
-
-	//log.Println("command: ", cmd.String())
-
-	out, err := cmd.Output()
-	if len(out) > 0 {
-		log.Println("typst init output: ")
-		log.Println(string(out))
-	}
-
-	return err
-}
-
-func QueryCmd() []string {
-	return nil
-}
-
-func FontsCmd() []string {
-	cmd := newCmd(context.Background(), "fonts")
-	out, _ := cmd.Output()
-	return strings.Split(string(out), "\n")
-}
-
-func VersionCmd() string {
-	cmd := newCmd(context.Background(), "--version")
-	out, _ := cmd.Output()
-
-	pat := regexp.MustCompile(`^typst\s+(\S+)`)
-	match := pat.FindSubmatch(out)
-	if match == nil {
-		return strings.TrimSpace(string(out))
-	}
-
-	return string(match[1])
-}
-
-var (
-	version string
-)
-
-func CurrentVersion() string {
-	if version == "" {
-		version = VersionCmd()
-	}
-
-	return version
 }

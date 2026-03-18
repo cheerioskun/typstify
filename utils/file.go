@@ -2,23 +2,22 @@ package utils
 
 import (
 	"errors"
-	"log"
 	"os"
 	"os/exec"
 	"runtime"
 )
 
-func CheckExists(file string) bool {
-	_, err := os.Stat(file)
+func CheckFileExists(path string) (exists bool, isDir bool) {
+	info, err := os.Stat(path)
 	if err == nil {
-		return true
-	}
-	if errors.Is(err, os.ErrNotExist) {
-		return false
+		return true, info.IsDir()
 	}
 
-	log.Println("cannot check if executable exist", err)
-	return true
+	if errors.Is(err, os.ErrNotExist) {
+		return false, false
+	}
+
+	return false, false
 }
 
 func OpenInExternalApp(path string) error {

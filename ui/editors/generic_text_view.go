@@ -105,6 +105,7 @@ func (te *GenericTextEditor) layoutEditor(gtx C, th *theme.Theme) D {
 
 func (te *GenericTextEditor) layoutFileInfo(gtx C, th *theme.Theme) D {
 	return layout.Inset{
+		Left:   unit.Dp(8),
 		Top:    unit.Dp(1),
 		Bottom: unit.Dp(1),
 	}.Layout(gtx, func(gtx C) D {

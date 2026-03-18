@@ -69,8 +69,9 @@ func (fb *fileBreadcrums) Layout(gtx C, th *theme.Theme) D {
 	fb.pathList.Axis = layout.Horizontal
 
 	return layout.Inset{
-		Top:    unit.Dp(1),
-		Bottom: unit.Dp(1),
+		Left:   unit.Dp(8),
+		Top:    unit.Dp(2),
+		Bottom: unit.Dp(2),
 	}.Layout(gtx, func(gtx C) D {
 		return fb.pathList.Layout(gtx, len(fb.pathes), func(gtx C, index int) D {
 			child := fb.pathes[index]

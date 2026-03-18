@@ -131,6 +131,7 @@ func (ui *UI) registerViews() {
 	vm.Register(dialog.DeleteFileDialogViewID, func() view.View { return dialog.NewDeleteFileDialog() })
 	vm.Register(dialog.DndDropFileDialogViewID, func() view.View { return dialog.NewDndDropFileDialog() })
 	vm.Register(dialog.ChangeIndentationDialogViewID, func() view.View { return dialog.NewChangeIndentationDialog() })
+	vm.Register(dialog.OpenWithExternalAppDialogViewID, dialog.NewOpenWithExternalAppDialog)
 
 	ui.vm = vm
 	ui.srv.SetViewManager(vm.ViewManager)

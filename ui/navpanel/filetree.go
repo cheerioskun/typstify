@@ -24,7 +24,6 @@ import (
 	"looz.ws/typstify/ui/dialog"
 	"looz.ws/typstify/ui/editors"
 	"looz.ws/typstify/ui/viewer"
-	"looz.ws/typstify/utils"
 	"looz.ws/typstify/widgets/filetree"
 )
 
@@ -290,194 +289,15 @@ func onFileSelected(node *filetree.FileNode) view.Intent {
 		}
 	}
 
-	utils.OpenInExternalApp(node.Path)
-	return view.Intent{}
-}
-
-/*
-func FileTreeMenuOptions(vm view.ViewManager, projectDir string) explorer.MenuOptionFunc {
-	rootDir := filepath.Clean(projectDir)
-
-	return func(gtx C, item *explorer.EntryNavItem) [][]menu.MenuOption {
-		// copy & paste files or folders
-		revealInExplorerOpt := menu.MenuOption{
-			OnClicked: func() error {
-				openInFsExplorer(item)
-				return nil
-			},
-
-			Layout: func(gtx C, th *theme.Theme) D {
-				name := i18n.Translate("Open File Location")
-				if item.IsDir() {
-					name = i18n.Translate("Open Folder Location")
-				}
-
-				return material.Label(th.Theme, th.TextSize, name).Layout(gtx)
-			},
-		}
-
-		// copy & paste files or folders
-		copyOpt := menu.MenuOption{
-			OnClicked: func() error {
-				item.OnCopyOrCut(gtx, false)
-				return nil
-			},
-
-			Layout: func(gtx C, th *theme.Theme) D {
-				return material.Label(th.Theme, th.TextSize, "Copy").Layout(gtx)
-			},
-		}
-
-		copyPathOpt := menu.MenuOption{
-			OnClicked: func() error {
-				gtx.Execute(clipboard.WriteCmd{Type: mimeText, Data: io.NopCloser(strings.NewReader(item.Path()))})
-				return nil
-			},
-
-			Layout: func(gtx C, th *theme.Theme) D {
-				return material.Label(th.Theme, th.TextSize, "Copy Path").Layout(gtx)
-			},
-		}
-
-		copyRelativePathOpt := menu.MenuOption{
-			OnClicked: func() error {
-				relPath, err := filepath.Rel(projectDir, item.Path())
-				if err != nil {
-					return err
-				}
-				gtx.Execute(clipboard.WriteCmd{Type: mimeText, Data: io.NopCloser(strings.NewReader(relPath))})
-				return nil
-			},
-
-			Layout: func(gtx C, th *theme.Theme) D {
-				return material.Label(th.Theme, th.TextSize, "Copy Relative Path").Layout(gtx)
-			},
-		}
-
-		cutOpt := menu.MenuOption{
-			OnClicked: func() error {
-				item.OnCopyOrCut(gtx, true)
-				return nil
-			},
-
-			Layout: func(gtx C, th *theme.Theme) D {
-				return material.Label(th.Theme, th.TextSize, "Cut").Layout(gtx)
-			},
-		}
-
-		pasteOpt := menu.MenuOption{
-			OnClicked: func() error {
-				gtx.Execute(clipboard.ReadCmd{Tag: item})
-				gtx.Execute(op.InvalidateCmd{})
-
-				return nil
-			},
-
-			Layout: func(gtx C, th *theme.Theme) D {
-				return material.Label(th.Theme, th.TextSize, "Paste").Layout(gtx)
-			},
-		}
-
-		renameOpt := menu.MenuOption{
-			OnClicked: func() error {
-				item.StartEditing(gtx)
-				return nil
-			},
-
-			Layout: func(gtx C, th *theme.Theme) D {
-				return material.Label(th.Theme, th.TextSize, "Rename").Layout(gtx)
-			},
-		}
-
-		deleteOpt := menu.MenuOption{
-			OnClicked: func() error {
-				go func() {
-					destPath := filepath.Clean(item.Path())
-					relPath, err := filepath.Rel(rootDir, destPath)
-					if err == nil {
-						destPath = relPath
-					}
-
-					caller := dialog.NewDialogChooser[bool](vm)
-					result, err := caller.Call(dialog.DeleteFileDialogViewID, map[string]any{"destination": destPath})
-					if err != nil {
-						log.Println("delete file error: ", err)
-					}
-
-					if result.Params {
-						if err := item.Remove(); err != nil {
-							log.Println("delete file error: ", err)
-						}
-					}
-				}()
-
-				return nil
-			},
-
-			Layout: func(gtx C, th *theme.Theme) D {
-				return material.Label(th.Theme, th.TextSize, "Delete").Layout(gtx)
-			},
-		}
-
-		// create new file in current folder
-		newFileOpt := menu.MenuOption{
-			OnClicked: func() error {
-				err := item.CreateChild(gtx, explorer.FileNode, func(node *explorer.EntryNode) {
-					vm.RequestSwitch(onFileSelected(node))
-				})
-				if err != nil {
-					log.Println("create file failed: ", err)
-				}
-
-				return err
-			},
-
-			Layout: func(gtx C, th *theme.Theme) D {
-				return material.Label(th.Theme, th.TextSize, "New File").Layout(gtx)
-			},
-		}
-
-		// create subfolder
-		newFolderOpt := menu.MenuOption{
-			OnClicked: func() error {
-				err := item.CreateChild(gtx, explorer.FolderNode, nil)
-				if err != nil {
-					log.Println("create folder failed: ", err)
-				}
-
-				return err
-			},
-
-			Layout: func(gtx C, th *theme.Theme) D {
-				return material.Label(th.Theme, th.TextSize, "New Folder").Layout(gtx)
-			},
-		}
-
-		// root node options
-		if item.Parent() == nil {
-			return [][]menu.MenuOption{
-				{newFileOpt, newFolderOpt},
-				{revealInExplorerOpt, copyPathOpt, copyRelativePathOpt, pasteOpt},
-			}
-		}
-
-		common := [][]menu.MenuOption{
-			{copyOpt, cutOpt, pasteOpt},
-			{revealInExplorerOpt, copyPathOpt, copyRelativePathOpt, renameOpt, deleteOpt},
-		}
-
-		if item.Kind() == explorer.FolderNode {
-			// create subfolder, files, remove files, rename files
-			dirOptions := []menu.MenuOption{newFileOpt, newFolderOpt}
-
-			dirOptions = append(dirOptions, common[0]...)
-			common[0] = dirOptions
-		}
-
-		return common
+	return view.Intent{
+		Target:      dialog.OpenWithExternalAppDialogViewID,
+		ShowAsModal: true,
+		Params: map[string]interface{}{
+			"path": node.Path,
+		},
 	}
+
 }
-*/
 
 // ported from https://cs.opensource.google/go/x/tools/+/refs/tags/v0.26.0:godoc/util/util.go;l=69
 func isTextFile(node *filetree.FileNode) bool {

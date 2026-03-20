@@ -504,6 +504,7 @@ func (me *TextEditor) convertIndentation(kind gvcode.TabStyle, tabWidth int, tex
 
 func (me *TextEditor) Close() error {
 	me.autoSaver.Stop()
+	me.highlighter.Close()
 	return nil
 }
 

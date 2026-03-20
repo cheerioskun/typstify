@@ -20,19 +20,27 @@ import (
 	"github.com/saintfish/chardet"
 )
 
+const highlightDebounce = 50 * time.Millisecond
+
+var camelCaseRe = regexp.MustCompile(`([A-Z]+)`)
+
 type highlightResult struct {
 	seq    uint64
 	tokens *[]syntax.Token
 }
 
+type highlightJob struct {
+	seq    uint64
+	editor *gvcode.Editor
+}
+
 type Highlighter struct {
 	lexer         chroma.Lexer
-	buffers       [2][]syntax.Token
-	bufIdx        int // only accessed from highlight goroutines, serialized by running
-	running       atomic.Bool
-	seq           uint64 // only accessed from the UI thread
+	seq           atomic.Uint64
 	pendingResult atomic.Pointer[highlightResult]
-	debounceTimer *time.Timer // only accessed from the UI thread
+	jobs          chan highlightJob
+	done          chan struct{}
+	closed        atomic.Bool
 }
 
 func NewHighlighter(filename string) *Highlighter {
@@ -43,10 +51,16 @@ func NewHighlighter(filename string) *Highlighter {
 	}
 
 	lexer = chroma.Coalesce(lexer)
-	return &Highlighter{lexer: lexer}
-}
 
-var camelCaseRe = regexp.MustCompile(`([A-Z]+)`)
+	h := &Highlighter{
+		lexer: lexer,
+		jobs:  make(chan highlightJob, 1),
+		done:  make(chan struct{}),
+	}
+
+	h.startWorker()
+	return h
+}
 
 func chromaTokenType2Scope(t chroma.TokenType) syntax.StyleScope {
 	str := camelCaseRe.ReplaceAllString(t.String(), `.$1`)
@@ -71,54 +85,127 @@ func convertChromaColor(c chroma.Colour) gvcolor.Color {
 // Highlight debounces and tokenizes the editor content asynchronously.
 // Results are picked up via PendingTokens on the next frame.
 func (h *Highlighter) Highlight(editor *gvcode.Editor) {
-	if h.debounceTimer != nil {
-		h.debounceTimer.Stop()
+	if h.closed.Load() {
+		return
+	}
+	seq := h.seq.Add(1)
+	job := highlightJob{seq: seq, editor: editor}
+	h.enqueueLatest(job)
+}
+
+// enqueueLatest keeps only the newest job in the 1-slot queue without blocking the caller.
+func (h *Highlighter) enqueueLatest(job highlightJob) {
+	for {
+		select {
+		case <-h.done:
+			return
+		case h.jobs <- job:
+			return
+		default:
+			// Queue full: drop stale job and retry.
+			select {
+			case <-h.jobs:
+			default:
+			}
+		}
+	}
+}
+
+func (h *Highlighter) startWorker() {
+	go func() {
+		var (
+			timer      *time.Timer
+			timerCh    <-chan time.Time
+			latest     highlightJob
+			haveLatest bool
+		)
+
+		for {
+			select {
+			case <-h.done:
+				if timer != nil {
+					timer.Stop()
+				}
+				return
+			case job := <-h.jobs:
+				latest = job
+				haveLatest = true
+				if timer == nil {
+					timer = time.NewTimer(highlightDebounce)
+					timerCh = timer.C
+				} else {
+					if !timer.Stop() {
+						select {
+						case <-timer.C:
+						default:
+						}
+					}
+					timer.Reset(highlightDebounce)
+				}
+			case <-timerCh:
+				if !haveLatest {
+					continue
+				}
+				haveLatest = false
+				if latest.seq != h.seq.Load() {
+					continue
+				}
+				tokens := h.tokenize(latest.editor)
+				if latest.seq != h.seq.Load() {
+					continue
+				}
+				h.pendingResult.Store(&highlightResult{seq: latest.seq, tokens: &tokens})
+			}
+		}
+	}()
+}
+
+func (h *Highlighter) Close() {
+	if !h.closed.CompareAndSwap(false, true) {
+		return
+	}
+	close(h.done)
+}
+
+func (h *Highlighter) tokenize(editor *gvcode.Editor) []syntax.Token {
+	if editor == nil {
+		return nil
+	}
+	reader := editor.GetReader()
+	reader.Seek(0, io.SeekStart)
+	source, err := io.ReadAll(reader)
+	if err != nil {
+		return nil
+	}
+	iterator, err := h.lexer.Tokenise(nil, string(source))
+	if err != nil {
+		return nil
 	}
 
-	h.seq++
-	seq := h.seq
-	reader := editor.GetReader()
-
-	h.debounceTimer = time.AfterFunc(50*time.Millisecond, func() {
-		if !h.running.CompareAndSwap(false, true) {
-			return // previous highlight still running, skip
-		}
-		defer h.running.Store(false)
-
-		reader.Seek(0, io.SeekStart)
-		source, err := io.ReadAll(reader)
-		if err != nil {
-			return
+	newTokens := make([]syntax.Token, 0)
+	offset := 0
+	for _, token := range iterator.Tokens() {
+		tokenLen := utf8.RuneCountInString(token.Value)
+		if tokenLen <= 0 {
+			continue
 		}
 
-		iterator, err := h.lexer.Tokenise(nil, string(source))
-		if err != nil {
-			return
+		textStyle := syntax.Token{
+			Start: offset,
+			End:   offset + tokenLen,
+			Scope: chromaTokenType2Scope(token.Type),
 		}
 
-		idx := h.bufIdx
-		h.buffers[idx] = h.buffers[idx][:0]
+		newTokens = append(newTokens, textStyle)
+		offset = textStyle.End
+	}
 
-		offset := 0
-		for _, token := range iterator.Tokens() {
-			textStyle := syntax.Token{
-				Start: offset,
-				End:   offset + len([]rune(token.Value)),
-				Scope: chromaTokenType2Scope(token.Type),
-			}
-
-			h.buffers[idx] = append(h.buffers[idx], textStyle)
-			offset = textStyle.End
-		}
-
-		h.pendingResult.Store(&highlightResult{seq: seq, tokens: &h.buffers[idx]})
-		h.bufIdx = 1 - idx
-	})
+	return newTokens
 }
 
 func (h *Highlighter) PendingTokens() *[]syntax.Token {
 	result := h.pendingResult.Swap(nil)
-	if result == nil || result.seq != h.seq {
+	if result == nil || result.seq != h.seq.Load() {
 		return nil // no result, or stale result from before a newer edit
 	}
 	return result.tokens
@@ -133,7 +220,6 @@ func (h *Highlighter) LexerName() string {
 }
 
 func fileEncoding(filePath string) string {
-
 	file, err := os.Open(filePath)
 	if err != nil {
 		return "-"

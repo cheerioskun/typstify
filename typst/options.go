@@ -15,6 +15,10 @@ const (
 	HTML OutFormat = "html"
 )
 
+// Command line compiling options for Typst. The fields always contains all the
+// options of the latest version supported, and Build method exports fields supported
+// by the current configured Typst version. Be noted that it uses Typst v0.11.0 as
+// the base version. 
 type CompileCmdOptions struct {
 	// Configures the project root (for absolute paths) [env: TYPST_ROOT=]
 	RootDir string
@@ -84,15 +88,16 @@ type InitCmdOptions struct {
 
 func (opt *CompileCmdOptions) Build() []string {
 	opts := make([]string, 0)
+	v := ParseVersion(CurrentVersion())
 
-	setPair := func(key string, val any) {
+	setPair := func(key string, value any) {
 		opts = append(opts, "--"+key)
-		if v, ok := val.(string); ok {
-			if v != "" {
-				opts = append(opts, v)
+		if value, ok := value.(string); ok {
+			if value != "" {
+				opts = append(opts, value)
 			}
 		} else {
-			opts = append(opts, fmt.Sprintf("%v", val))
+			opts = append(opts, fmt.Sprintf("%v", value))
 		}
 	}
 
@@ -112,44 +117,8 @@ func (opt *CompileCmdOptions) Build() []string {
 		}
 	}
 
-	if opt.IgnoreSystemFonts {
-		setPair("ignore-system-fonts", "")
-	}
-
-	if opt.IgnoreEmbeddedFonts {
-		setPair("ignore-embedded-fonts", "")
-	}
-
-	if opt.CreationTimestamp > 0 {
-		setPair("creation-timestamp", opt.CreationTimestamp)
-	}
-
 	if opt.DiagnosticFormat != "" {
 		setPair("diagnostic-format", opt.DiagnosticFormat)
-	}
-
-	if opt.PackagePath != "" {
-		setPair("package-path", opt.PackagePath)
-	}
-
-	if opt.PackageCachePath != "" {
-		setPair("package-cache-path", opt.PackageCachePath)
-	}
-
-	if opt.Jobs > 0 {
-		setPair("jobs", opt.Jobs)
-	}
-
-	if opt.Pages != "" {
-		setPair("pages", opt.Pages)
-	}
-
-	if opt.Deps != "" {
-		setPair("deps", opt.Deps)
-	}
-
-	if opt.DepsFormat != "" {
-		setPair("deps-format", opt.DepsFormat)
 	}
 
 	if opt.Format != "" {
@@ -164,24 +133,68 @@ func (opt *CompileCmdOptions) Build() []string {
 		setPair("timings", opt.Timings)
 	}
 
-	if len(opt.PdfStandards) > 0 {
-		allStds := make([]string, 0)
-		for _, std := range opt.PdfStandards {
-			if std.Argument() != "" {
-				allStds = append(allStds, std.Argument())
+	// --pages added in v0.12.0
+	if v.AtLeast(0, 12, 0) {
+		if opt.Pages != "" {
+			setPair("pages", opt.Pages)
+		}
+
+		if opt.PackagePath != "" {
+			setPair("package-path", opt.PackagePath)
+		}
+
+		if opt.PackageCachePath != "" {
+			setPair("package-cache-path", opt.PackageCachePath)
+		}
+
+		if opt.IgnoreSystemFonts {
+			setPair("ignore-system-fonts", "")
+		}
+
+		if len(opt.PdfStandards) > 0 {
+			allStds := make([]string, 0)
+			for _, std := range opt.PdfStandards {
+				if std.Argument() != "" {
+					allStds = append(allStds, std.Argument())
+				}
+			}
+			if len(allStds) > 0 {
+				setPair("pdf-standard", strings.Join(allStds, ","))
 			}
 		}
-		if len(allStds) > 0 {
-			setPair("pdf-standard", strings.Join(allStds, ","))
+
+		if opt.Jobs > 0 {
+			setPair("jobs", opt.Jobs)
+		}
+
+		if opt.CreationTimestamp > 0 {
+			setPair("creation-timestamp", opt.CreationTimestamp)
 		}
 	}
 
-	if opt.NoPdfTags {
-		setPair("no-pdf-tags", "")
+	// --features added in v0.13.0
+	if v.AtLeast(0, 13, 0) {
+		if opt.Features != "" {
+			setPair("features", opt.Features)
+		}
 	}
 
-	if opt.Features != "" {
-		setPair("features", opt.Features)
+	// --deps and --deps-format added in v0.14.0
+	if v.AtLeast(0, 14, 0) {
+		if opt.NoPdfTags {
+			setPair("no-pdf-tags", "")
+		}
+		if opt.Deps != "" {
+			setPair("deps", opt.Deps)
+		}
+
+		if opt.DepsFormat != "" {
+			setPair("deps-format", opt.DepsFormat)
+		}
+
+		if opt.IgnoreEmbeddedFonts {
+			setPair("ignore-embedded-fonts", "")
+		}
 	}
 
 	return opts
@@ -189,17 +202,21 @@ func (opt *CompileCmdOptions) Build() []string {
 
 func (opt *InitCmdOptions) Build() []string {
 	opts := make([]string, 0)
+	v := ParseVersion(CurrentVersion())
 
 	setPair := func(key string, val any) {
 		opts = append(opts, "--"+key, fmt.Sprintf("%v", val))
 	}
 
-	if opt.PackagePath != "" {
-		setPair("package-path", opt.PackagePath)
-	}
+	// --package-path and --package-cache-path added in v0.12
+	if v.AtLeast(0, 12, 0) {
+		if opt.PackagePath != "" {
+			setPair("package-path", opt.PackagePath)
+		}
 
-	if opt.PackageCachePath != "" {
-		setPair("package-cache-path", opt.PackageCachePath)
+		if opt.PackageCachePath != "" {
+			setPair("package-cache-path", opt.PackageCachePath)
+		}
 	}
 
 	return opts

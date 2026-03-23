@@ -18,7 +18,7 @@ const (
 // Command line compiling options for Typst. The fields always contains all the
 // options of the latest version supported, and Build method exports fields supported
 // by the current configured Typst version. Be noted that it uses Typst v0.11.0 as
-// the base version. 
+// the base version.
 type CompileCmdOptions struct {
 	// Configures the project root (for absolute paths) [env: TYPST_ROOT=]
 	RootDir string
@@ -57,7 +57,7 @@ type CompileCmdOptions struct {
 	// File format to use for dependencies [default: json] [possible values: json, zero, make]
 	DepsFormat string
 	//The format of the output file, inferred from the extension by default
-	// [possible values: pdf, png, svg]
+	// [possible values: pdf, png, svg, html]
 	Format OutFormat
 	// The PPI (pixels per inch) to use for PNG export [default: 144].
 	PPI int
@@ -92,9 +92,9 @@ func (opt *CompileCmdOptions) Build() []string {
 
 	setPair := func(key string, value any) {
 		opts = append(opts, "--"+key)
-		if value, ok := value.(string); ok {
-			if value != "" {
-				opts = append(opts, value)
+		if val, ok := value.(string); ok {
+			if val != "" {
+				opts = append(opts, val)
 			}
 		} else {
 			opts = append(opts, fmt.Sprintf("%v", value))

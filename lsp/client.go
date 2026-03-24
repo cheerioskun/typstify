@@ -200,6 +200,11 @@ func (c *Client) connectServer(ctx context.Context, initOpts map[string]any) err
 			},
 			Capabilities: protocol.ClientCapabilities{
 				TextDocument: protocol.TextDocumentClientCapabilities{
+					Synchronization: &protocol.TextDocumentSyncClientCapabilities{
+						DidSave:             true,
+						DynamicRegistration: false,
+						WillSave:            false,
+					},
 					Completion: protocol.CompletionClientCapabilities{
 						CompletionItem: protocol.ClientCompletionItemOptions{
 							SnippetSupport:       true,
@@ -341,7 +346,7 @@ func (c *Client) Handle(ctx context.Context, req *jsonrpc2.Request) (interface{}
 		docDiagnostics := DocDiagnostics{URI: params.URI, Diagnostics: params.Diagnostics, refreshed: true}
 		c.updateDiagnostics(docDiagnostics)
 	default:
-		c.logger.Info("LSP notification not handled", "method", req.Method)
+		c.logger.Debug("LSP notification not handled", "method", req.Method)
 	}
 	return nil, nil
 }
@@ -349,18 +354,16 @@ func (c *Client) Handle(ctx context.Context, req *jsonrpc2.Request) (interface{}
 // OnEditorUpdated should be called when editor loads a file, or content changed, or when the editor closed.
 func (c *Client) OnEditorUpdated(filePath string, state *gvcode.Editor) {
 	c.docCache.Update(filePath, state.GetReader())
-	if c.connReady.Load() {
-		ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
-		defer cancel()
-		err := c.notifyDidOpenOrChange(ctx, filePath)
-		if err != nil {
-			c.logger.Info("notifyDidOpenOrChange failed")
-		}
+	if !c.connReady.Load() {
+		return
+	}
 
-		// err = c.PullDiagnostics(context.Background(), filePath)
-		// if err != nil {
-		// 	c.logger.Info("PullDiagnostics failed: ", err)
-		// }
+	ctx, cancel := context.WithTimeout(context.Background(), CommunicationTimeout)
+	defer cancel()
+
+	err := c.notifyDidOpenOrChange(ctx, filePath)
+	if err != nil {
+		c.logger.Info("notifyDidOpenOrChange failed", "error", err)
 	}
 }
 
@@ -368,10 +371,33 @@ func (c *Client) OnEditorClosed(filePath string) {
 	c.docCache.Remove(filePath)
 	//TODO: if connection is not ready, the closing notification may never fire.
 	if c.connReady.Load() {
-		ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+		ctx, cancel := context.WithTimeout(context.Background(), CommunicationTimeout)
 		defer cancel()
 		c.notifyDidOpenOrChange(ctx, filePath)
 	}
+}
+
+func (c *Client) OnEditorSaved(filePath string) {
+	if !c.connReady.Load() {
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), CommunicationTimeout)
+	defer cancel()
+
+	doc, err := c.docCache.Get(filePath)
+	if err != nil {
+		return
+	}
+
+	params := &protocol.DidSaveTextDocumentParams{
+		TextDocument: protocol.TextDocumentIdentifier{
+			URI: doc.URI,
+		},
+	}
+
+	// Notify the server that the file is safe on disk
+	c.jsonConn.Notify(ctx, protocol.RPCMethodDidSave, params)
 }
 
 func (c *Client) notifyDidOpenOrChange(ctx context.Context, filePath string) (err error) {
@@ -380,15 +406,9 @@ func (c *Client) notifyDidOpenOrChange(ctx context.Context, filePath string) (er
 		return err
 	}
 
-	if doc.Synced() {
+	if !doc.NeedsSync() {
 		return nil
 	}
-
-	defer func() {
-		if err == nil {
-			doc.MakrSynced()
-		}
-	}()
 
 	// If file got deleted since last time.
 	if doc.Removed {
@@ -405,6 +425,9 @@ func (c *Client) notifyDidOpenOrChange(ctx context.Context, filePath string) (er
 		}
 	}
 
+	currentVersion := doc.Version
+	currentContent := doc.Content()
+
 	// else update it.
 	if doc.IsNew() {
 		// Notify opening a file not previously tracked.
@@ -413,35 +436,40 @@ func (c *Client) notifyDidOpenOrChange(ctx context.Context, filePath string) (er
 			TextDocument: protocol.TextDocumentItem{
 				URI:        doc.URI,
 				LanguageID: "typst",
-				Version:    int32(doc.Version),
-				Text:       doc.Content(),
+				Version:    int32(currentVersion),
+				Text:       currentContent,
 			}}
 
 		err = c.jsonConn.Notify(ctx, protocol.RPCMethodDidOpen, params)
 		if err != nil {
 			err = errors.Wrapf(err, "Failed Client.NotifyDidOpenOrChange notification for %q", filePath)
+		} else {
+			doc.MarkSynced(currentVersion)
 		}
 		return
 	}
 
 	// Update the contents of the file.
-	c.logger.Debug("lsp.NotifyDidOpenOrChange -- file changed ", "version", doc.Version, "content", doc.Content())
+	c.logger.Debug("lsp.NotifyDidOpenOrChange -- file changed ", "version", doc.Version)
 	params := &protocol.DidChangeTextDocumentParams{
 		TextDocument: protocol.VersionedTextDocumentIdentifier{
 			TextDocumentIdentifier: protocol.TextDocumentIdentifier{
 				URI: doc.URI,
 			},
-			Version: int32(doc.Version),
+			Version: int32(currentVersion),
 		},
 		ContentChanges: []protocol.TextDocumentContentChangeEvent{
 			{
-				Text: doc.Content(),
+				Text: currentContent,
 			},
 		},
 	}
 	err = c.jsonConn.Notify(ctx, protocol.RPCMethodDidChange, params)
 	if err != nil {
 		err = errors.Wrapf(err, "Failed Client.NotifyDidOpenOrChange::change notification for %q", filePath)
+	} else {
+		// Only mark this specific version as synced
+		doc.MarkSynced(currentVersion)
 	}
 	return
 }

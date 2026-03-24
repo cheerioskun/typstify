@@ -116,7 +116,7 @@ func (p *PreviewClient) requestLspPreview(ctx context.Context, targetFile string
 	// }
 
 	if opts.PartialRender {
-		args = append(args, "--partial-rendering")
+		args = append(args, "--partial-rendering", "true")
 	}
 	if opts.OpenInBrowser {
 		args = append(args, "--open", "--not-primary")

@@ -646,6 +646,11 @@ func NewTextEditor(path string, createOnMissing bool, readonly bool, settings *s
 		// update editor original hash
 		ed.originalHash = calcDigest(editorContent)
 
+		// On successful write, notify the LSP
+		if ed.lspClient != nil {
+			ed.lspClient.OnEditorSaved(ed.filename)
+		}
+
 		return nil
 	})
 

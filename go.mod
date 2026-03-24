@@ -17,12 +17,11 @@ require (
 	github.com/inkeliz/giohyperlink v0.0.0-20220903215451-2ac5d54abdce
 	github.com/mustafaturan/bus/v3 v3.0.3
 	github.com/oligo/gioview v0.8.5
-	github.com/oligo/gvcode v0.4.4
+	github.com/oligo/gvcode v0.5.0
 	github.com/pkg/errors v0.8.1
 	github.com/rivo/uniseg v0.4.7
 	github.com/sahilm/fuzzy v0.1.1
 	github.com/saintfish/chardet v0.0.0-20230101081208-5e3ef4b5456d
-	github.com/xi2/xz v0.0.0-20171230120015-48954b6210f8
 	go.etcd.io/bbolt v1.3.11
 	golang.org/x/exp/jsonrpc2 v0.0.0-20250911091902-df9299821621
 	golang.org/x/exp/shiny v0.0.0-20250408133849-7e4ce0ab07d0
@@ -30,8 +29,6 @@ require (
 	golang.org/x/telemetry v0.0.0-20250105011419-6d9ea865d014
 	golang.org/x/text v0.32.0
 )
-
-replace github.com/oligo/gvcode => ../gvcode
 
 // use a local patch to fix the focus switching issue between the native webview and GioView
 // Remove this if https://github.com/gioui/gio/pull/165 is accepted.

@@ -3,9 +3,7 @@ package lsp
 import (
 	"errors"
 	"io"
-	"log"
 	"sync"
-	"time"
 
 	"looz.ws/typstify/lsp/protocol"
 )
@@ -15,15 +13,15 @@ type DocReader func() string
 type document struct {
 	// Every open file that has been sent to LSP server has a version,
 	// it is bumped when it is updated and sent again.
-	Version      int
-	Path         string
-	URI          protocol.DocumentURI
-	Removed      bool
-	updateTime   time.Time
-	lastSyncTime time.Time
-	reader       io.ReadSeeker
-	mu           sync.Mutex
-	readerMu     sync.Mutex
+	Version         int
+	Path            string
+	URI             protocol.DocumentURI
+	Removed         bool
+	lastSyncVersion int
+	isOpenSynced    bool
+	reader          io.ReadSeeker
+	mu              sync.Mutex
+	readerMu        sync.Mutex
 }
 
 // documentCache holds cached data of the document.
@@ -48,24 +46,27 @@ func (doc *document) Content() string {
 	return ""
 }
 
-func (doc *document) Synced() bool {
-	doc.mu.Lock()
-	defer doc.mu.Unlock()
-	return doc.updateTime.Equal(doc.lastSyncTime)
-}
-
 func (doc *document) IsNew() bool {
 	doc.mu.Lock()
 	defer doc.mu.Unlock()
-	return doc.Version == 0
+	return doc.Version == 0 || !doc.isOpenSynced
 }
 
-func (doc *document) MakrSynced() {
+// Synced should check if the Last Sent Version matches the Current Version
+func (doc *document) NeedsSync() bool {
 	doc.mu.Lock()
 	defer doc.mu.Unlock()
-	if doc.updateTime.After(doc.lastSyncTime) {
-		doc.lastSyncTime = doc.updateTime
+	return !doc.isOpenSynced || doc.lastSyncVersion < doc.Version
+}
+
+func (doc *document) MarkSynced(version int) {
+	doc.mu.Lock()
+	defer doc.mu.Unlock()
+	if version > doc.lastSyncVersion {
+		doc.lastSyncVersion = version
 	}
+
+	doc.isOpenSynced = true
 }
 
 func newDocumentCache() *documentCache {
@@ -77,15 +78,13 @@ func newDocumentCache() *documentCache {
 
 func (c *documentCache) add(filePath string, reader io.ReadSeeker) {
 	doc := &document{
-		Version:    0,
-		Path:       filePath,
-		URI:        protocol.URIFromPath(filePath),
-		reader:     reader,
-		Removed:    false,
-		updateTime: time.Now(),
+		Version: 0,
+		Path:    filePath,
+		URI:     protocol.URIFromPath(filePath),
+		reader:  reader,
+		Removed: false,
 	}
 	c.docs[filePath] = doc
-	log.Println("Added document", filePath)
 }
 
 func (c *documentCache) Update(filePath string, reader io.ReadSeeker) {
@@ -98,13 +97,11 @@ func (c *documentCache) Update(filePath string, reader io.ReadSeeker) {
 		return
 	}
 
-	if doc.Synced() {
-		doc.updateTime = time.Now()
-		// doc.reader = reader
-		doc.Version++
-	} else {
-		doc.updateTime = time.Now()
-	}
+	doc.mu.Lock()
+	// Always increment version for LSP compliance
+	doc.Version++
+	doc.reader = reader
+	doc.mu.Unlock()
 }
 
 func (c *documentCache) Remove(filePath string) {
@@ -112,7 +109,6 @@ func (c *documentCache) Remove(filePath string) {
 	defer c.mu.Unlock()
 	if doc, exists := c.docs[filePath]; exists {
 		doc.Removed = true
-		doc.updateTime = time.Now()
 	}
 }
 

@@ -383,6 +383,9 @@ func (t *TreeView) CreateChild(gtx layout.Context, parent *FileNode, kind explor
 	}
 
 	if err != nil {
+		if t.OnErrorFunc != nil {
+			t.OnErrorFunc(err)
+		}
 		return err
 	}
 

@@ -21,8 +21,10 @@ import (
 	"golang.org/x/exp/shiny/materialdesign/icons"
 	"looz.ws/typstify/i18n"
 	"looz.ws/typstify/service"
+	"looz.ws/typstify/service/bus"
 	"looz.ws/typstify/ui/dialog"
 	"looz.ws/typstify/ui/editors"
+	"looz.ws/typstify/ui/statusbar"
 	"looz.ws/typstify/ui/viewer"
 	"looz.ws/typstify/widgets/filetree"
 )
@@ -120,6 +122,7 @@ func (tn *FileTreeNav) switchRoot() {
 	newTree.OnFileRemoveFunc = tn.onFileDeleted
 	newTree.OnErrorFunc = func(err error) {
 		log.Println("file tree error: ", err)
+		tn.srv.EventBus().Emit(bus.TopicStatusbarNotifyEvent, statusbar.Notification{Content: err.Error(), Level: 1})
 	}
 
 	tn.tree = newTree

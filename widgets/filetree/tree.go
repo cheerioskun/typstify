@@ -75,7 +75,8 @@ type TreeView struct {
 	dndInited      bool
 	isEditingNode  bool
 
-	OnFileCreatedFunc  func(node *FileNode)
+	// callback which is called when file is created or renamed.
+	OnFileUpdatedFunc  func(node *FileNode, oldPath string)
 	OnFileRemoveFunc   func(node *FileNode)
 	OnFileSelectedFunc func(node *FileNode)
 	OnDropConfirmFunc  OnDropConfirmFunc
@@ -208,10 +209,18 @@ func (t *TreeView) layout(gtx layout.Context, th *theme.Theme, dropTarget *FileN
 		state := t.GetState(flatNode.Node.Path)
 		state.Editable.OnChanged = func(text string) {
 			t.isEditingNode = false
+			oldPath := flatNode.Node.Path
 			err := flatNode.Node.UpdateName(text)
 			if err != nil {
 				log.Println("err: ", err)
+				if t.OnErrorFunc != nil {
+					t.OnErrorFunc(err)
+				}
 				return
+			}
+
+			if t.OnFileUpdatedFunc != nil {
+				t.OnFileUpdatedFunc(flatNode.Node, oldPath)
 			}
 		}
 		state.Editable.Color = th.Fg
@@ -391,10 +400,6 @@ func (t *TreeView) CreateChild(gtx layout.Context, parent *FileNode, kind explor
 
 	childNode := parent.Children()[0]
 
-	if t.OnFileCreatedFunc != nil {
-		t.OnFileCreatedFunc(childNode)
-	}
-
 	t.StartEditing(gtx, childNode)
 
 	// Expand parent folder
@@ -562,7 +567,7 @@ func (t *TreeView) OnSelect(fileNode *FileNode) {
 			t.pendingRebuild = true
 		}
 
-		if !fileNode.IsDir() && t.OnFileCreatedFunc != nil {
+		if !fileNode.IsDir() && t.OnFileSelectedFunc != nil {
 			t.OnFileSelectedFunc(fileNode)
 		}
 	}

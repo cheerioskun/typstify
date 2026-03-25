@@ -116,9 +116,7 @@ func (tn *FileTreeNav) switchRoot() {
 	// set callbacks for file operations
 	newTree.OnFileSelectedFunc = tn.onFileSelected
 	newTree.OnDropConfirmFunc = onDropConfirmFunc(tn.vm, newTree.Root())
-	newTree.OnFileCreatedFunc = func(node *filetree.FileNode) {
-		tn.vm.RequestSwitch(onFileSelected(node))
-	}
+	newTree.OnFileUpdatedFunc = tn.onFileUpdated
 	newTree.OnFileRemoveFunc = tn.onFileDeleted
 	newTree.OnErrorFunc = func(err error) {
 		log.Println("file tree error: ", err)
@@ -194,6 +192,23 @@ func (tn *FileTreeNav) Layout(gtx C, th *theme.Theme) D {
 	}
 
 	return tn.tree.Layout(gtx, th)
+}
+
+// onFileUpdated close opened view, and then re-open the updated file.
+func (tn *FileTreeNav) onFileUpdated(node *filetree.FileNode, oldPath string) {
+	views := tn.vm.OpenedViews()
+	for idx, vw := range views {
+		location := vw.Location()
+		switch vw.ID() {
+		case editors.GenericTextEditorViewID, editors.TypstEditorViewID, viewer.ImgViewerViewID:
+			filePath := location.Query().Get("path")
+			if filePath == oldPath {
+				tn.vm.CloseTab(idx)
+			}
+		}
+	}
+
+	tn.vm.RequestSwitch(onFileSelected(node))
 }
 
 func (tn *FileTreeNav) onFileSelected(node *filetree.FileNode) {

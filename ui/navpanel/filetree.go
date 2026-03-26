@@ -26,6 +26,7 @@ import (
 	"looz.ws/typstify/ui/editors"
 	"looz.ws/typstify/ui/statusbar"
 	"looz.ws/typstify/ui/viewer"
+	"looz.ws/typstify/utils"
 	"looz.ws/typstify/widgets/filetree"
 )
 
@@ -196,6 +197,10 @@ func (tn *FileTreeNav) Layout(gtx C, th *theme.Theme) D {
 
 // onFileUpdated close opened view, and then re-open the updated file.
 func (tn *FileTreeNav) onFileUpdated(node *filetree.FileNode, oldPath string) {
+	if node.IsDir() {
+		return
+	}
+
 	views := tn.vm.OpenedViews()
 	for idx, vw := range views {
 		location := vw.Location()
@@ -213,6 +218,11 @@ func (tn *FileTreeNav) onFileUpdated(node *filetree.FileNode, oldPath string) {
 
 func (tn *FileTreeNav) onFileSelected(node *filetree.FileNode) {
 	if node == nil {
+		return
+	}
+
+	exists, isDir := utils.CheckFileExists(node.Path)
+	if !exists || isDir {
 		return
 	}
 

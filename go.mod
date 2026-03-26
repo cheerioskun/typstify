@@ -16,7 +16,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/inkeliz/giohyperlink v0.0.0-20220903215451-2ac5d54abdce
 	github.com/mustafaturan/bus/v3 v3.0.3
-	github.com/oligo/gioview v0.8.5
+	github.com/oligo/gioview v0.8.6
 	github.com/oligo/gvcode v0.6.0
 	github.com/pkg/errors v0.8.1
 	github.com/rivo/uniseg v0.4.7

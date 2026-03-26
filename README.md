@@ -6,12 +6,6 @@
 
 The cross-platform desktop editor for Typst. Unlock the power of Typst with Typstify. Get the professional power of LaTeX with a modern, intuitive editor designed for seamless typesetting and development.
 
-## Source-Only Distribution
-
-**Important:** The typstify project is distributed as source code only. For pre-compiled binary releases, please download from the [official website](https://typstify.com/download)
-
-
-
 
 ## Run
 
@@ -21,34 +15,21 @@ cd typstify
 go run .
 ```
 
+To run the app locally, you must 
+* Place the executables `typst` and `tinymist` (or `tyspt.exe` and `tinymist.exe`) in the root folder, 
+* Or set custom executable paths for Typst and Tinymist in the setting page.
+
+
 ## Build
 
-This project uses [Gio](https://gioui.org/) to build the UI, to build a binary release, you have to install and use the gogio tool, please 
-refer to [gio-cmd](https://git.sr.ht/~eliasnaur/gio-cmd) to learn more.
+This project uses [Gio](https://gioui.org/) to build the UI. To build a binary release, you have to install and use the gogio tool, please 
+refer to [gio-cmd](https://git.sr.ht/~eliasnaur/gio-cmd) to learn more. Also CGO must be enabled to build it.
 
+**Important:** The typstify project is distributed as source code only. For pre-compiled binary releases, please download from the [official website](https://typstify.com/download)
 
-### Cross build
+## Contribute
 
-If you want to cross-compile on MacOS, install mingw64 first:
-
-```sh
-brew install mingw-w64
-```
-
-Then run the following command:
-
-```sh
-GOOS=windows GOARCH=amd64 CGO_ENABLED=1 CC=x86_64-w64-mingw32-gcc CXX=x86_64-w64-mingw32-g++ make windows
-```
-
-The CC and CXX are needed by webview_go, Gio is not required to set them.
-
-To compile in Windows, install MinGW-w64 first, follow the [guide](https://github.com/niXman/mingw-builds-binaries?tab=readme-ov-file) here, and then in git bash:
-
-```sh
- export PATH="C:\Users\atzha\mingw64\bin:$PATH"
-```
-
+Please feel free to contribute by filing issues or creating pull requests. 
 
 ## Explore Further
 

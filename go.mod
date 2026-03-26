@@ -16,7 +16,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/inkeliz/giohyperlink v0.0.0-20220903215451-2ac5d54abdce
 	github.com/mustafaturan/bus/v3 v3.0.3
-	github.com/oligo/gioview v0.8.6
+	github.com/oligo/gioview v0.8.7
 	github.com/oligo/gvcode v0.6.0
 	github.com/pkg/errors v0.8.1
 	github.com/rivo/uniseg v0.4.7
@@ -26,6 +26,7 @@ require (
 	golang.org/x/exp/jsonrpc2 v0.0.0-20250911091902-df9299821621
 	golang.org/x/exp/shiny v0.0.0-20250408133849-7e4ce0ab07d0
 	golang.org/x/image v0.26.0
+	golang.org/x/sys v0.39.0
 	golang.org/x/telemetry v0.0.0-20250105011419-6d9ea865d014
 	golang.org/x/text v0.32.0
 )
@@ -53,6 +54,5 @@ require (
 	golang.org/x/exp v0.0.0-20250408133849-7e4ce0ab07d0 // indirect
 	golang.org/x/exp/event v0.0.0-20250819193227-8b4c13bb791b // indirect
 	golang.org/x/net v0.48.0 // indirect
-	golang.org/x/sys v0.39.0 // indirect
 	golang.org/x/xerrors v0.0.0-20240903120638-7835f813f4da // indirect
 )

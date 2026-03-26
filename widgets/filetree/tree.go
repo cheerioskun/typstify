@@ -23,6 +23,7 @@ import (
 	"gioui.org/unit"
 	"gioui.org/widget"
 	"gioui.org/widget/material"
+	"github.com/fsnotify/fsnotify"
 	"github.com/oligo/gioview/explorer"
 	"github.com/oligo/gioview/misc"
 	"github.com/oligo/gioview/theme"
@@ -55,7 +56,8 @@ type TreeView struct {
 	visibleNodes []FlatNode
 
 	// View components managed by the controller
-	list widget.List
+	list      widget.List
+	fsWatcher *fsnotify.Watcher
 
 	// The selected node which is determined by a left-click.
 	// Keyboard shortcuts operates on selected node.
@@ -84,13 +86,23 @@ type TreeView struct {
 }
 
 func NewTreeView(rootNode *FileNode) *TreeView {
-	return &TreeView{
+	fsWatcher, err := fsnotify.NewWatcher()
+	if err != nil {
+		panic(err)
+	}
+
+	t := &TreeView{
 		root:           rootNode,
 		states:         make(map[string]*NodeState),
 		visibleNodes:   make([]FlatNode, 0),
 		pendingRebuild: true,
 		contextMenu:    menu.NewContextMenu(),
+		fsWatcher:      fsWatcher,
 	}
+
+	t.watchFSEvents(t.handleFsEvent)
+
+	return t
 }
 
 func (t *TreeView) Root() string {
@@ -141,6 +153,10 @@ func (t *TreeView) flatten(node *FileNode, depth int) {
 	}
 
 	if node == t.root || (state.Expanded && node.IsDir()) {
+		if t.fsWatcher != nil {
+			t.fsWatcher.Add(node.Path)
+		}
+
 		// Refresh update existing children, insert new nodes, remove already
 		// deleted ones, so its safe to call it as existing nodes does not change
 		// its pointer.
@@ -148,6 +164,10 @@ func (t *TreeView) flatten(node *FileNode, depth int) {
 		for _, child := range node.Children() {
 			t.flatten(child, depth+1)
 		}
+	}
+
+	if !state.Expanded && node.IsDir() && node != t.root {
+		t.fsWatcher.Remove(node.Path)
 	}
 }
 
@@ -732,8 +752,58 @@ func (t *TreeView) getContextMenuOptions(node *FileNode) [][]menu.MenuOption {
 	return menuOptionFunc(node)
 }
 
+func (t *TreeView) watchFSEvents(onFsEvent func(fsnotify.Event)) {
+	go func() {
+		for {
+			select {
+			case event, ok := <-t.fsWatcher.Events:
+				if !ok {
+					return
+				}
+
+				onFsEvent(event)
+
+				// Handle cleanup for deleted directories
+				// fsnotify automatically stops watching deleted directories,
+				// but sometimes manual cleanup helps prevent resource leaks.
+				if event.Op.Has(fsnotify.Remove) || event.Op.Has(fsnotify.Rename) {
+					// We don't need to Stat, just attempt to remove it.
+					t.fsWatcher.Remove(event.Name)
+				}
+
+			case err, ok := <-t.fsWatcher.Errors:
+				if !ok {
+					return
+				}
+				log.Println("fsnotify error:", err)
+			}
+		}
+	}()
+}
+
+func (t *TreeView) handleFsEvent(event fsnotify.Event) {
+	if event.Op.Has(fsnotify.Create) {
+		t.pendingRebuild = true
+	}
+
+	if event.Op.Has(fsnotify.Remove) {
+		t.pendingRebuild = true
+	}
+
+	if event.Op.Has(fsnotify.Write) {
+		t.pendingRebuild = true
+	}
+
+	if event.Op.Has(fsnotify.Rename) {
+		t.pendingRebuild = true
+	}
+
+}
+
 func (t *TreeView) Close() {
-	// NO-OP
+	if t.fsWatcher != nil {
+		t.fsWatcher.Close()
+	}
 }
 
 // Restore create a tree  by applying state to the newly created tree.

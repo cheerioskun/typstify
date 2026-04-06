@@ -163,7 +163,9 @@ func (tn *FileTreeNav) saveLastWorkplace() {
 
 func (tn *FileTreeNav) OnClose() {
 	tn.saveLastWorkplace()
-	tn.tree.Close()
+	if tn.tree != nil {
+		tn.tree.Close()
+	}
 }
 
 func (tn *FileTreeNav) Title() string {

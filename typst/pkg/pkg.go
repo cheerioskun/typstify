@@ -2,43 +2,29 @@
 package pkg
 
 import (
-	"errors"
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
-	"runtime"
 
-	"github.com/BurntSushi/toml"
+	tpix "github.com/typstify/tpix-cli"
+	"github.com/typstify/tpix-cli/api"
 	"looz.ws/typstify/service/settings"
-	"looz.ws/typstify/typst"
 )
 
-type PackageInfo struct {
-	Package
-	Namespace string
+type TypstPkg struct {
+	api.SearchResult
 	// If the package is a remote package, it may have beed cached.
 	IsCached bool
-	// installed in local repo.
-	IsLocal bool
+	Versions []api.PackageVersionInfo
 }
 
-type TypstPkg struct {
-	// namespace of package.
-	Namespace string
-	Name      string
-	Versions  []*PackageInfo
-}
-
-// struct for typst.toml
-type packageToml struct {
-	Pkg      *Package      `toml:"package"`
-	Template *TemplateInfo `toml:"template"`
+func (p *TypstPkg) ImportPath() string {
+	return fmt.Sprintf("@%s/%s:%s", p.Namespace, p.Name, p.LatestVersion)
 }
 
 type TypstPkgService struct {
-	localRepo    *localPkgRepo
-	officialRepo *officialPkgRepo
+	cacheDir string
+	remoteRepo
 }
 
 func (p *Package) ThumbUrl(size string) string {
@@ -52,94 +38,8 @@ func (p *Package) ThumbUrl(size string) string {
 	return fmt.Sprintf("https://packages.typst.org/preview/thumbnails/%s-%s-%s.webp", p.Name, p.Version, size)
 }
 
-func (p *PackageInfo) ImportPath() string {
-	return fmt.Sprintf("@%s/%s:%s", p.Namespace, p.Name, p.Version)
-}
-
-// Scan the local dir to find typst packages.
-//
-// The pkgDir layout should have 3 layer hierarchies:
-// 1. namespace folders
-// 2. package folders
-// 3. version folders
-// The returned data holds the same 3 layer mapping.
-func scanPackages(pkgDir string, isCacheDir bool) (map[string]map[string]*TypstPkg, error) {
-	pkgMap := make(map[string]map[string]*TypstPkg)
-
-	// Read namespaces.
-	entries, err := os.ReadDir(pkgDir)
-	if err != nil {
-		return pkgMap, err
-	}
-
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			// Not a namespace dir
-			continue
-		}
-		namespace := entry.Name()
-		if _, ok := pkgMap[namespace]; !ok {
-			pkgMap[namespace] = make(map[string]*TypstPkg)
-		}
-
-		// read packages
-		pkgEntries, err := os.ReadDir(filepath.Join(pkgDir, namespace))
-		if err != nil {
-			log.Println("scan package error: ", err)
-			continue
-		}
-
-		for _, pkgEntry := range pkgEntries {
-			if !pkgEntry.IsDir() {
-				// Not a package dir
-				continue
-			}
-			packageName := pkgEntry.Name()
-			// read versions
-			verEntries, err := os.ReadDir(filepath.Join(pkgDir, namespace, packageName))
-			if err != nil {
-				log.Println("scan package error: ", err)
-				continue
-			}
-
-			for _, verEntry := range verEntries {
-				if !verEntry.IsDir() {
-					// not a version dir
-					continue
-				}
-				version := verEntry.Name()
-				metaFile, err := os.Open(filepath.Join(pkgDir, namespace, packageName, version, "typst.toml"))
-				if err != nil {
-					log.Println("scan package error: ", err)
-					continue
-				}
-
-				var pkgInfo = packageToml{}
-				_, err = toml.NewDecoder(metaFile).Decode(&pkgInfo)
-				if err != nil {
-					log.Printf("scan package %s error: %v", filepath.Join(pkgDir, namespace, packageName, version), err)
-					continue
-				}
-
-				pkgInfo.Pkg.Template = pkgInfo.Template
-
-				// add to the final pkgMap
-				p, ok := pkgMap[namespace][packageName]
-				if !ok {
-					p = &TypstPkg{
-						Namespace: namespace,
-						Name:      packageName,
-					}
-					pkgMap[namespace][packageName] = p
-				}
-
-				p.Versions = append(p.Versions, &PackageInfo{Package: *pkgInfo.Pkg, Namespace: namespace, IsCached: isCacheDir, IsLocal: !isCacheDir})
-
-			}
-		}
-	}
-
-	return pkgMap, nil
+func ImportPath(namespace string, name string, version string) string {
+	return fmt.Sprintf("@%s/%s:%s", namespace, name, version)
 }
 
 func DefaultCacheDir() string {
@@ -151,115 +51,48 @@ func DefaultCacheDir() string {
 	return filepath.Join(dir, "typst", "packages")
 }
 
-func DefaultPkgDir() string {
-	var dir string
-	var err error
-
-	switch runtime.GOOS {
-	case "windows", "darwin", "ios", "plan9":
-		dir, err = os.UserConfigDir()
-		if err != nil {
-			return ""
-		}
-	default:
-		dir = os.Getenv("XDG_DATA_HOME")
-	}
-
-	dest := filepath.Join(dir, "typst/packages")
-	_ = os.MkdirAll(dest, 0755)
-	return dest
-}
-
 func NewTypstPkgService(config *settings.TypstSettings) *TypstPkgService {
-	pkgDir := config.PackageDir
 	cacheDir := config.PackageCacheDir
-	if pkgDir == "" {
-		pkgDir = DefaultPkgDir()
-	}
+
 	if cacheDir == "" {
 		cacheDir = DefaultCacheDir()
 	}
 
 	return &TypstPkgService{
-		localRepo:    &localPkgRepo{pkgDir: pkgDir},
-		officialRepo: &officialPkgRepo{cacheDir: cacheDir},
+		cacheDir: cacheDir,
 	}
-}
-
-func (s *TypstPkgService) LocalPkgs() ([]*TypstPkg, error) {
-	return s.localRepo.ListPkgs()
-}
-
-func (s *TypstPkgService) RemotePublicPkgs() ([]*TypstPkg, error) {
-	return s.officialRepo.ListPkgs()
 }
 
 // Create a empty package using builtin template manifest. Returning the dir of
 // of package, and a optional error.
-func (s *TypstPkgService) CreatePkg(name string, namespace string, isTemplate bool) (string, error) {
-	return s.localRepo.CreatePkg(name, namespace, isTemplate)
+func (s *TypstPkgService) CreatePkg(pkgDir string, name string, isTemplate bool) (string, error) {
+	return CreatePkg(pkgDir, name, isTemplate)
 }
 
 func (s *TypstPkgService) CreateSampleDocument(projectDir string, name string) (string, error) {
 	return createTemplateDocument(projectDir, name)
 }
 
-const readme = `
-This is a sample README file for %s.
-
-These files are generated by Typstify for you:
-
-1. typst.toml: A Typst package manifest. Useful if you want to convert your project to a Typst package. Remove it if you don't need it.
-2. LICENSE: An empty license statement file.
-3. README.md: This file you are reading now.
-4. main.typ: An entrypoint file for your document.
-
-Feel free to edit or remove the above files.
-`
-
-func createTemplateDocument(packageDir string, name string) (string, error) {
-	if packageDir == "" {
-		return "", errors.New("invalid package dir")
-	}
-
-	manifest := Package{
-		Name:        name,
-		Version:     "0.1.0",
-		Entrypoint:  "main.typ",
-		Authors:     []string{""},
-		License:     "",
-		Description: "An example Typst document project.",
-		Homepage:    "",
-		Repository:  "",
-		Compiler:    typst.CurrentVersion(),
-	}
-
-	pkgDir := filepath.Join(packageDir, name)
-	err := os.MkdirAll(pkgDir, 0755)
+func (s *TypstPkgService) CachedPkgs() ([]TypstPkg, error) {
+	pkgMap, err := scanPackages(s.cacheDir)
 	if err != nil {
-		return pkgDir, err
+		return nil, err
 	}
 
-	// generate manifest file
-	err = GenerateManifest(&manifest, pkgDir)
-	if err != nil {
-		return pkgDir, err
+	list := make([]TypstPkg, 0)
+	for _, p := range pkgMap {
+		for _, v := range p {
+			list = append(list, v)
+		}
+	}
+	return list, nil
+}
+
+func (s *TypstPkgService) Download(namespace string, name string, version string) (int, error) {
+	spec := fmt.Sprintf("@%s/%s", namespace, name)
+	if version != "" {
+		spec += ":" + version
 	}
 
-	// create entrypoint file
-	err = createTemplateFile(filepath.Join(pkgDir, "main.typ"), entrypointFile)
-	if err != nil {
-		return pkgDir, err
-	}
-	err = createTemplateFile(filepath.Join(pkgDir, "LICENSE"), "Put your license text here.")
-	if err != nil {
-		return pkgDir, err
-	}
-
-	err = createTemplateFile(filepath.Join(pkgDir, "README.md"), fmt.Sprintf(readme, name))
-	if err != nil {
-		return pkgDir, err
-	}
-
-	return pkgDir, nil
+	return tpix.DownloadPackage(spec, s.cacheDir, false, nil)
 }

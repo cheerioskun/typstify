@@ -29,13 +29,13 @@ import (
 )
 
 type PkgCard struct {
-	pkgInfo *pkg.PackageInfo
-	thumb   *PkgThumb
-	copyBtn widget.Clickable
-	initBtn widget.Clickable
-	docBtn  widget.Clickable
+	pkgInfo     pkg.TypstPkg
+	thumb       *PkgThumb
+	copyBtn     widget.Clickable
+	downloadBtn widget.Clickable
+	docBtn      widget.Clickable
 
-	onInitClicked func(pkgInfo *pkg.PackageInfo)
+	onDownloadClicked func(pkgInfo *pkg.TypstPkg)
 }
 
 type PkgThumb struct {
@@ -46,16 +46,10 @@ type PkgThumb struct {
 	onClick   func(imgPath string)
 }
 
-func newPkgCard(pkg *pkg.PackageInfo, img *image.ImageSource, onThumbClick func(imgPath string), onInitClicked func(pkgInfo *pkg.PackageInfo)) *PkgCard {
+func newPkgCard(pkg pkg.TypstPkg, img *image.ImageSource, onThumbClick func(imgPath string), onDownloadClicked func(pkgInfo *pkg.TypstPkg)) *PkgCard {
 	return &PkgCard{
-		pkgInfo: pkg,
-		thumb:   &PkgThumb{thumb: img, rawImgLoc: pkg.ThumbUrl(""), onClick: onThumbClick},
-		// docLink: &view.Link[string]{
-		// 	Title: "Read the Docs",
-		// 	Src: fmt.Sprintf("https://typst.app/universe/package/%s", pkg.Name),
-		// 	OnClicked: nil,
-		// },
-		onInitClicked: onInitClicked,
+		pkgInfo:           pkg,
+		onDownloadClicked: onDownloadClicked,
 	}
 }
 
@@ -64,8 +58,8 @@ func (c *PkgCard) update(gtx C) {
 		c.copyImportPath(gtx)
 	}
 
-	if c.initBtn.Clicked(gtx) && c.onInitClicked != nil {
-		c.onInitClicked(c.pkgInfo)
+	if c.downloadBtn.Clicked(gtx) && c.onDownloadClicked != nil {
+		c.onDownloadClicked(&c.pkgInfo)
 	}
 
 	if c.docBtn.Clicked(gtx) {
@@ -81,13 +75,7 @@ func (c *PkgCard) Layout(gtx C, th *theme.Theme) D {
 	callOp := macro.Stop()
 
 	defer clip.UniformRRect(stdimg.Rectangle{Max: dims.Size}, 12).Push(gtx.Ops).Pop()
-	// paint.LinearGradientOp{
-	// 	Stop1:  f32.Pt(0, 0),
-	// 	Color1: th.Bg,
-	// 	Stop2:  layout.FPt(gtx.Constraints.Max),
-	// 	Color2: th.Bg2,
-	// }.Add(gtx.Ops)
-	paint.ColorOp{Color: misc.WithAlpha(th.Bg2, th.SelectedAlpha)}.Add(gtx.Ops)
+	paint.ColorOp{Color: misc.WithAlpha(th.Fg, 0x10)}.Add(gtx.Ops)
 	paint.PaintOp{}.Add(gtx.Ops)
 	callOp.Add(gtx.Ops)
 
@@ -124,16 +112,14 @@ func (c *PkgCard) layout(gtx C, th *theme.Theme) D {
 							}),
 							layout.Rigid(layout.Spacer{Width: unit.Dp(16)}.Layout),
 							layout.Rigid(func(gtx C) D {
-								h := material.Label(th.Theme, th.TextSize, c.pkgInfo.Version)
+								h := material.Label(th.Theme, th.TextSize, c.pkgInfo.LatestVersion)
 								h.Color = misc.WithAlpha(th.Fg, 0xb6)
 								return h.Layout(gtx)
 							}),
 							layout.Rigid(layout.Spacer{Width: unit.Dp(16)}.Layout),
 							layout.Flexed(1, func(gtx C) D {
 								indicator := ""
-								if c.pkgInfo.IsLocal {
-									indicator = i18n.Translate("Local")
-								} else if c.pkgInfo.IsCached {
+								if c.pkgInfo.IsCached {
 									indicator = i18n.Translate("Cached")
 								}
 
@@ -166,7 +152,10 @@ func (c *PkgCard) layout(gtx C, th *theme.Theme) D {
 						return layoutLabel(gtx, th, "Author", strings.Join(c.pkgInfo.Authors, ","))
 					}),
 					layout.Rigid(func(gtx C) D {
-						return layoutLabel(gtx, th, "Last Updated", time.Unix(c.pkgInfo.UpdatedAt, 0).Format(time.DateOnly))
+						if c.pkgInfo.CreatedAt.IsZero() {
+							return D{}
+						}
+						return layoutLabel(gtx, th, "Last Updated", c.pkgInfo.PublishedAt.Format(time.DateOnly))
 					}),
 					layout.Rigid(func(gtx C) D {
 						return layoutLabel(gtx, th, "License", c.pkgInfo.License)
@@ -174,12 +163,12 @@ func (c *PkgCard) layout(gtx C, th *theme.Theme) D {
 					layout.Rigid(func(gtx C) D {
 						return layoutLabel(gtx, th, "Category", strings.Join(c.pkgInfo.Categories, ","))
 					}),
-					layout.Rigid(func(gtx C) D {
-						return layoutLabel(gtx, th, "Minimum Typst version", c.pkgInfo.Compiler)
-					}),
-					layout.Rigid(func(gtx C) D {
-						return layoutLabel(gtx, th, "Repository", c.pkgInfo.Repository)
-					}),
+					// layout.Rigid(func(gtx C) D {
+					// 	return layoutLabel(gtx, th, "Minimum Typst version", c.pkgInfo.LatestVersion)
+					// }),
+					// layout.Rigid(func(gtx C) D {
+					// 	return layoutLabel(gtx, th, "Repository", c.pkgInfo.)
+					// }),
 					layout.Rigid(func(gtx C) D {
 						return layoutLabel(gtx, th, "Namesapce", c.pkgInfo.Namespace)
 					}),
@@ -207,11 +196,8 @@ func (c *PkgCard) layout(gtx C, th *theme.Theme) D {
 							layout.Rigid(layout.Spacer{Width: unit.Dp(12)}.Layout),
 
 							layout.Rigid(func(gtx C) D {
-								// non-template package cannot be used to init a project.
-								if c.pkgInfo.Template == nil {
-									return D{}
-								}
-								btn := material.Button(th.Theme, &c.initBtn, "Init a project")
+
+								btn := material.Button(th.Theme, &c.downloadBtn, "Download")
 								btn.Inset = layout.Inset{Top: unit.Dp(2), Bottom: unit.Dp(2), Left: unit.Dp(4), Right: unit.Dp(4)}
 								return btn.Layout(gtx)
 							}),
@@ -229,10 +215,10 @@ func (c *PkgCard) copyImportPath(gtx C) {
 }
 
 func (c *PkgCard) openPkgDocPage() {
-	if c.pkgInfo.IsLocal {
+	if c.pkgInfo.IsCached {
 		return
 	}
-	giohyperlink.Open(fmt.Sprintf("https://typst.app/universe/package/%s", c.pkgInfo.Name))
+	giohyperlink.Open(fmt.Sprintf("https://tpix.typstify.com/packages/preview/%s", c.pkgInfo.Name))
 }
 
 func (t *PkgThumb) Layout(gtx C, th *theme.Theme) D {

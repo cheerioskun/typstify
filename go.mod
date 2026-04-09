@@ -5,7 +5,6 @@ go 1.25.4
 require (
 	gioui.org v0.9.1-0.20251215212054-7bcb315ee174
 	gioui.org/x v0.9.0
-	github.com/BurntSushi/toml v1.4.0
 	github.com/alecthomas/chroma/v2 v2.15.0
 	github.com/apstndb/go-lsp-export v0.0.0-20250111110713-da502b65ef68
 	github.com/denisbrodbeck/machineid v1.0.1
@@ -22,7 +21,7 @@ require (
 	github.com/rivo/uniseg v0.4.7
 	github.com/sahilm/fuzzy v0.1.1
 	github.com/saintfish/chardet v0.0.0-20230101081208-5e3ef4b5456d
-	github.com/typstify/tpix-cli v0.6.1
+	github.com/typstify/tpix-cli v0.8.0
 	go.etcd.io/bbolt v1.3.11
 	golang.org/x/exp/jsonrpc2 v0.0.0-20250911091902-df9299821621
 	golang.org/x/exp/shiny v0.0.0-20250408133849-7e4ce0ab07d0

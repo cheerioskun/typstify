@@ -27,15 +27,15 @@ type TypstPkgService struct {
 	remoteRepo
 }
 
-func (p *Package) ThumbUrl(size string) string {
-	if p.Template == nil {
+func (p *TypstPkg) ThumbUrl(size string) string {
+	if !p.IsTemplate {
 		return ""
 	}
 
 	if size == "" {
-		return fmt.Sprintf("https://packages.typst.org/preview/thumbnails/%s-%s.webp", p.Name, p.Version)
+		return fmt.Sprintf("https://packages.typst.org/preview/thumbnails/%s-%s.webp", p.Name, p.Versions[0].Version)
 	}
-	return fmt.Sprintf("https://packages.typst.org/preview/thumbnails/%s-%s-%s.webp", p.Name, p.Version, size)
+	return fmt.Sprintf("https://packages.typst.org/preview/thumbnails/%s-%s-%s.webp", p.Name, p.Versions[0].Version, size)
 }
 
 func ImportPath(namespace string, name string, version string) string {

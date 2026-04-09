@@ -2,7 +2,6 @@ package pkg
 
 import (
 	"fmt"
-	"log"
 	"sync/atomic"
 
 	tpix "github.com/typstify/tpix-cli"
@@ -46,8 +45,7 @@ func (r *remoteRepo) search(namespace string, kind string, category string, quer
 		r.loading.CompareAndSwap(true, false)
 	}()
 
-	log.Println("searching with params: ", query)
-	results, err := tpix.SearchPackages(namespace, query, kind, category, "", 30)
+	results, err := tpix.SearchPackages(namespace, query, kind, category, "", 100)
 	if err != nil {
 		return nil, err
 	}

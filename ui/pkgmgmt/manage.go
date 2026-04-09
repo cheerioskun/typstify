@@ -20,7 +20,6 @@ import (
 	"looz.ws/typstify/service/bus"
 	"looz.ws/typstify/typst/pkg"
 	"looz.ws/typstify/ui/statusbar"
-	"looz.ws/typstify/ui/viewer"
 	"looz.ws/typstify/widgets"
 )
 
@@ -30,8 +29,8 @@ type (
 )
 
 var (
-	PkgListViewID = view.NewViewID("PkgListView")
-	searchIcon, _ = widget.NewIcon(icons.ActionSearch)
+	PkgListViewID   = view.NewViewID("PkgListView")
+	searchIcon, _   = widget.NewIcon(icons.ActionSearch)
 )
 
 type PkgListView struct {
@@ -74,7 +73,7 @@ func (vw *PkgListView) Layout(gtx C, th *theme.Theme) D {
 		}.Layout(gtx,
 			layout.Rigid(func(gtx C) D {
 				gtx.Constraints.Max.X = gtx.Dp(unit.Dp(220))
-				gtx.Constraints.Min.X = gtx.Constraints.Max.X
+				gtx.Constraints.Min.X = gtx.Dp(unit.Dp(180))
 
 				return layout.Flex{
 					Axis: layout.Vertical,
@@ -144,16 +143,7 @@ func (vw *PkgListView) Layout(gtx C, th *theme.Theme) D {
 					layout.Rigid(func(gtx C) D {
 						gtx.Constraints.Min.X = gtx.Constraints.Max.X
 
-						inset := layout.Inset{
-							Left:   unit.Dp(12),
-							Right:  unit.Dp(12),
-							Top:    unit.Dp(8),
-							Bottom: unit.Dp(8),
-						}
-
-						return inset.Layout(gtx, func(gtx C) D {
-							return vw.packageList.Layout(gtx, th)
-						})
+						return vw.packageList.Layout(gtx, th)
 					}),
 				)
 
@@ -176,6 +166,9 @@ func (vw *PkgListView) update(gtx C) {
 	}
 
 	if reload {
+		// Show loading immediately while data loads in background
+		vw.packageList = newPkgList(nil, true)
+
 		go func() {
 			vw.loadData(vw.kindSelect.Value().(string), vw.categoryList.GetChecked(), vw.searchInput.Text())
 		}()
@@ -183,7 +176,7 @@ func (vw *PkgListView) update(gtx C) {
 
 	if old := vw.lastFetched.Swap(nil); old != nil {
 		vw.cards = *old
-		vw.packageList = newPkgList(vw.cards)
+		vw.packageList = newPkgList(vw.cards, false)
 	}
 
 }
@@ -199,27 +192,8 @@ func (vw *PkgListView) loadData(kind string, category string, query string) {
 
 		cards := make([]*PkgCard, 0)
 		for _, p := range results {
-			//latestVer := p.Versions[0]
-			// var thumb *image.ImageSource
-			// if latestVer.Template != nil {
-			// 	if latestVer.ThumbUrl("small") != "" {
-			// 		thumb = image.ImageFromFile(latestVer.ThumbUrl("small"))
-			// 	}
-			// }
 
-			card := newPkgCard(p, nil,
-				func(imgPath string) {
-					if imgPath != "" {
-						intent := view.Intent{
-							Target:      viewer.ImgViewerViewID,
-							ShowAsModal: true,
-							Params: map[string]interface{}{
-								"path": imgPath,
-							},
-						}
-						vw.vm.RequestSwitch(intent)
-					}
-				},
+			card := newPkgCard(p,
 				func(pkgInfo *pkg.TypstPkg) {
 					vw.downloadPkg(pkgInfo)
 				})
@@ -262,6 +236,6 @@ func NewPkgListView(srv *service.ServiceFacade, vm view.ViewManager) view.View {
 		vm:           vm,
 		categoryList: newCategoryList(),
 		kindSelect:   widgets.NewDropDown([]any{"all", "pkg", "template"}),
-		packageList:  newPkgList(nil),
+		packageList:  newPkgList(nil, false),
 	}
 }

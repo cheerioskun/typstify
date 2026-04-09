@@ -14,8 +14,9 @@ import (
 )
 
 type PkgList struct {
-	cards []*PkgCard
-	list  *widget.List
+	cards   []*PkgCard
+	list    *widget.List
+	loading bool
 }
 
 type CategoryList struct {
@@ -25,9 +26,10 @@ type CategoryList struct {
 	clearSelect  widget.Clickable
 }
 
-func newPkgList(cards []*PkgCard) *PkgList {
+func newPkgList(cards []*PkgCard, loading bool) *PkgList {
 	return &PkgList{
-		cards: cards,
+		cards:   cards,
+		loading: loading,
 		list: &widget.List{
 			List: layout.List{
 				Axis: layout.Vertical,
@@ -46,6 +48,16 @@ func newCategoryList() *CategoryList {
 }
 
 func (p *PkgList) Layout(gtx C, th *theme.Theme) D {
+	// Loading state
+	if p.loading {
+		return layout.Center.Layout(gtx, func(gtx C) D {
+			lb := material.Label(th.Theme, th.TextSize, i18n.Translate("Loading packages..."))
+			lb.Color = misc.WithAlpha(th.Fg, 0xb6)
+			return lb.Layout(gtx)
+		})
+	}
+
+	// Empty state
 	if len(p.cards) <= 0 {
 		return layout.Center.Layout(gtx, func(gtx C) D {
 			lb := material.Label(th.Theme, th.TextSize, i18n.Translate("No packages/templates found"))
@@ -53,10 +65,10 @@ func (p *PkgList) Layout(gtx C, th *theme.Theme) D {
 			return lb.Layout(gtx)
 		})
 	}
-	return material.List(th.Theme, p.list).Layout(gtx, len(p.cards), func(gtx C, index int) D {
+	return p.list.Layout(gtx, len(p.cards), func(gtx C, index int) D {
 		card := p.cards[index]
 
-		return layout.Inset{Top: unit.Dp(6), Right: unit.Dp(80)}.Layout(gtx, func(gtx C) D {
+		return layout.Inset{Top: unit.Dp(6)}.Layout(gtx, func(gtx C) D {
 			return card.Layout(gtx, th)
 		})
 	})

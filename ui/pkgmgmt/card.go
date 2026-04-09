@@ -46,7 +46,7 @@ type PkgThumb struct {
 	onClick   func(imgPath string)
 }
 
-func newPkgCard(pkg pkg.TypstPkg, img *image.ImageSource, onThumbClick func(imgPath string), onDownloadClicked func(pkgInfo *pkg.TypstPkg)) *PkgCard {
+func newPkgCard(pkg pkg.TypstPkg, onDownloadClicked func(pkgInfo *pkg.TypstPkg)) *PkgCard {
 	return &PkgCard{
 		pkgInfo:           pkg,
 		onDownloadClicked: onDownloadClicked,
@@ -130,8 +130,8 @@ func (c *PkgCard) layout(gtx C, th *theme.Theme) D {
 								return gvwiget.Tag{
 									Text:       indicator,
 									TextSize:   th.TextSize * 0.7,
-									TextColor:  misc.HexColor("#ffffff"),
-									Background: misc.HexColor("#196f3d"),
+									TextColor:  th.ContrastFg,
+									Background: th.ContrastBg,
 									Radius:     unit.Dp(8),
 									Inset:      layout.UniformInset(unit.Dp(4)),
 									Variant:    gvwiget.Solid,
@@ -170,7 +170,7 @@ func (c *PkgCard) layout(gtx C, th *theme.Theme) D {
 					// 	return layoutLabel(gtx, th, "Repository", c.pkgInfo.)
 					// }),
 					layout.Rigid(func(gtx C) D {
-						return layoutLabel(gtx, th, "Namesapce", c.pkgInfo.Namespace)
+						return layoutLabel(gtx, th, "Namespace", c.pkgInfo.Namespace)
 					}),
 
 					layout.Rigid(layout.Spacer{Height: unit.Dp(12)}.Layout),

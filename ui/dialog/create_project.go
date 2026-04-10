@@ -8,18 +8,16 @@ import (
 
 	"gioui.org/layout"
 	"gioui.org/text"
-	"gioui.org/unit"
 	"gioui.org/widget"
 	"gioui.org/widget/material"
-	"github.com/oligo/gioview/misc"
 	"github.com/oligo/gioview/theme"
 	"github.com/oligo/gioview/view"
 	gw "github.com/oligo/gioview/widget"
-	"golang.org/x/exp/shiny/materialdesign/icons"
 	"looz.ws/typstify/i18n"
 	"looz.ws/typstify/service"
 	"looz.ws/typstify/service/bus"
 	"looz.ws/typstify/typst"
+	"looz.ws/typstify/widgets/icons"
 )
 
 type ProjectKind string
@@ -34,7 +32,6 @@ type ProjectCreateReq struct {
 	Kind       ProjectKind
 	ProjectDir string
 	Name       string
-	Namespace  string
 	// template to use, for package or template kind this should be omitted.
 	TemplateName string
 }
@@ -42,7 +39,6 @@ type ProjectCreateReq struct {
 type CreateProjectDialog struct {
 	srv             *service.ServiceFacade
 	kindEnum        widget.Enum
-	namespaceInput  gw.TextField
 	templateInput   gw.TextField
 	nameInput       gw.TextField
 	projectDir      string
@@ -64,7 +60,7 @@ If you want to create project without template, just leave it empty.`
 var projectKinds = []ProjectKind{DocumentKind, PackageKind, TemplateKind}
 
 var (
-	folderOpenIcon, _ = widget.NewIcon(icons.FileFolderOpen)
+	folderOpenIcon = icons.NewSvgIcon(icons.FolderOpen)
 )
 
 func NewCreateProjectDialog(srv *service.ServiceFacade) view.View {
@@ -129,7 +125,7 @@ func (d *CreateProjectDialog) createPackageProject(req *ProjectCreateReq) (strin
 		return "", errors.New(i18n.Translate("Please set a name for your package/template."))
 	}
 
-	dir, err := d.srv.PkgService().CreatePkg(req.Name, req.Namespace, req.Kind == TemplateKind)
+	dir, err := d.srv.PkgService().CreatePkg(req.ProjectDir, req.Name, req.Kind == TemplateKind)
 	if err != nil {
 		log.Println("create package error: ", err)
 	}
@@ -153,17 +149,17 @@ func (d *CreateProjectDialog) OnConfirm() error {
 		dir, err = d.createDocumentProject(&req)
 	case string(PackageKind):
 		req = ProjectCreateReq{
-			Kind:      PackageKind,
-			Name:      d.nameInput.Text(),
-			Namespace: d.namespaceInput.Text(),
+			ProjectDir: d.projectDir,
+			Kind:       PackageKind,
+			Name:       d.nameInput.Text(),
 		}
 
 		dir, err = d.createPackageProject(&req)
 	case string(TemplateKind):
 		req = ProjectCreateReq{
-			Kind:      TemplateKind,
-			Name:      d.nameInput.Text(),
-			Namespace: d.namespaceInput.Text(),
+			ProjectDir: d.projectDir,
+			Kind:       TemplateKind,
+			Name:       d.nameInput.Text(),
 		}
 
 		dir, err = d.createPackageProject(&req)
@@ -206,23 +202,6 @@ func (d *CreateProjectDialog) LayoutBody(gtx C, th *theme.Theme) D {
 		}),
 
 		layout.Rigid(func(gtx C) D {
-			if d.kindEnum.Value == string(DocumentKind) {
-				return D{}
-			}
-
-			return formItem{Axis: layout.Vertical}.Layout(gtx, th, i18n.Translate("Namespace"),
-				i18n.Translate("Namespace for your package/template. If left empty, the default local is used."),
-				func(gtx C) D {
-					d.namespaceInput.Alignment = text.Start
-					d.namespaceInput.SingleLine = true
-					return d.namespaceInput.Layout(gtx, th, "")
-				})
-		}),
-
-		layout.Rigid(func(gtx C) D {
-			if d.kindEnum.Value != string(DocumentKind) {
-				return D{}
-			}
 			return formItem{Axis: layout.Vertical}.Layout(gtx, th, i18n.Translate("Project Location"),
 				i18n.Translate("Select the location where the project will be created."),
 				func(gtx C) D {
@@ -232,7 +211,7 @@ func (d *CreateProjectDialog) LayoutBody(gtx C, th *theme.Theme) D {
 						d.projectDirInput.State().ReadOnly = true
 						d.projectDirInput.LabelOption.Alignment = gw.Hidden
 						d.projectDirInput.Leading = func(gtx layout.Context) layout.Dimensions {
-							return misc.Icon{Icon: folderOpenIcon, Size: unit.Dp(18)}.Layout(gtx, th)
+							return folderOpenIcon.Layout(gtx, th.ContrastBg, th.TextSize*1.2)
 						}
 						if d.projectDir != d.projectDirInput.Text() {
 							d.projectDirInput.SetText(d.projectDir)
@@ -254,18 +233,8 @@ func (d *CreateProjectDialog) LayoutBody(gtx C, th *theme.Theme) D {
 		}),
 
 		layout.Rigid(func(gtx C) D {
-			if d.kindEnum.Value == string(DocumentKind) {
-				return formItem{Axis: layout.Vertical}.Layout(gtx, th, i18n.Translate("Project Name"),
-					i18n.Translate("The name of your project. A new folder will be created inside of the directory selected."),
-					func(gtx C) D {
-						d.nameInput.Alignment = text.Start
-						d.nameInput.SingleLine = true
-						return d.nameInput.Layout(gtx, th, "")
-					})
-			}
-
-			return formItem{Axis: layout.Vertical}.Layout(gtx, th, i18n.Translate("Package/Template Name"),
-				i18n.Translate("The name of your packages or templates. Packages or templates are created in your local Typst package repository."),
+			return formItem{Axis: layout.Vertical}.Layout(gtx, th, i18n.Translate("Project Name"),
+				i18n.Translate("The name of your project. A new folder will be created inside of the directory selected."),
 				func(gtx C) D {
 					d.nameInput.Alignment = text.Start
 					d.nameInput.SingleLine = true

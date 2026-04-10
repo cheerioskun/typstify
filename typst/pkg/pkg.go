@@ -23,7 +23,8 @@ func (p *TypstPkg) ImportPath() string {
 }
 
 type TypstPkgService struct {
-	cacheDir string
+	cacheDir   string
+	tpixConfig *settings.TpixSettings
 	remoteRepo
 }
 
@@ -51,7 +52,7 @@ func DefaultCacheDir() string {
 	return filepath.Join(dir, "typst", "packages")
 }
 
-func NewTypstPkgService(config *settings.TypstSettings) *TypstPkgService {
+func NewTypstPkgService(config *settings.TypstSettings, tpixConfig *settings.TpixSettings) *TypstPkgService {
 	cacheDir := config.PackageCacheDir
 
 	if cacheDir == "" {
@@ -59,18 +60,21 @@ func NewTypstPkgService(config *settings.TypstSettings) *TypstPkgService {
 	}
 
 	return &TypstPkgService{
-		cacheDir: cacheDir,
+		cacheDir:   cacheDir,
+		tpixConfig: tpixConfig,
 	}
 }
 
 // Create a empty package using builtin template manifest. Returning the dir of
 // of package, and a optional error.
 func (s *TypstPkgService) CreatePkg(pkgDir string, name string, isTemplate bool) (string, error) {
-	return CreatePkg(pkgDir, name, isTemplate)
+	author := fmt.Sprintf("%s <%s>", s.tpixConfig.Username, s.tpixConfig.Email)
+	return CreatePkg(pkgDir, name, isTemplate, author)
 }
 
 func (s *TypstPkgService) CreateSampleDocument(projectDir string, name string) (string, error) {
-	return createTemplateDocument(projectDir, name)
+	author := fmt.Sprintf("%s <%s>", s.tpixConfig.Username, s.tpixConfig.Email)
+	return createTemplateDocument(projectDir, name, author)
 }
 
 func (s *TypstPkgService) CachedPkgs() ([]TypstPkg, error) {

@@ -2,32 +2,32 @@
 
 [package]
 # The package's identifier in its namespace.
-name = "{{ .Name }}"
+name = "{{ .Package.Name }}"
 # The package's version as a full major-minor-patch triple. Package versioning should follow SemVer.
-version = "{{ .Version }}"
+version = "{{ .Package.Version }}"
 # The path to the main Typst file that is evaluated when the package is imported.
-entrypoint = "{{ .Entrypoint }}"
+entrypoint = "{{ .Package.Entrypoint }}"
 
 # A list of the package's authors. Each author can provide an email address, homepage,
 # or GitHub handle in angle brackets. The latter must start with an @ character, and 
 # URLs must start with http:// or https://.
-authors = [{{range $i, $v := .Authors}}{{if $i}}, {{end}}"{{$v}}"{{end}}]
+authors = [{{range $i, $v := .Package.Authors}}{{if $i}}, {{end}}"{{$v}}"{{end}}]
 
 # The package's license. Must contain a valid SPDX-2 expression describing one or 
 # multiple OSI-approved licenses.
-license = "{{ .License }}"
+license = "{{ .Package.License }}"
 
 # A short description of the package. Double-check this for grammar and spelling mistakes 
 # as it will appear in the package list.
-description = "{{ .Description }}"
+description = "{{ .Package.Description }}"
 
 # Optional: A link to the package's web presence, where there could be more details, an issue tracker, 
 # or something else. Will be linked to from the package list.
-homepage = "{{ .Homepage }}"
+homepage = "{{ .Package.Homepage }}"
 
 # Optional: A link to the repository where this package is developed. Will be linked to 
 # from the package list if there is no homepage.
-repository = "{{ .Repository }}"
+repository = "{{ .Package.Repository }}"
 
 # Optional: An array of search keywords for the package.
 keywords = []
@@ -36,7 +36,7 @@ keywords = []
 categories = []
 
 # Optional: The minimum Typst compiler version required for this package to work.
-compiler = "{{ .Compiler }}"
+compiler = "{{ .Package.Compiler }}"
 
 # Optional: An array of disciplines defining the target audience for which the package is useful. 
 # Should be empty if the package is generally applicable.

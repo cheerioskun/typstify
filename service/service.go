@@ -46,14 +46,14 @@ func NewService(ctx context.Context) *ServiceFacade {
 	s := &ServiceFacade{
 		eventbus:     eventbus,
 		settings:     st,
-		pkgService:   pkg.NewTypstPkgService(st.Typst()),
+		pkgService:   pkg.NewTypstPkgService(st.Typst(), st.Tpix()),
 		workspaceSrv: NewWorkspaceService(st.General().RootDir),
 		windowSrv:    NewWindowService(ctx, st),
 		consoleState: console.NewConsoleState(1000),
 	}
 
 	eventbus.Subscribe(s, "service.onSettingUpdate", bus.TopicSettingsUpdated, func(topic string, data interface{}) {
-		s.pkgService = pkg.NewTypstPkgService(st.Typst())
+		s.pkgService = pkg.NewTypstPkgService(st.Typst(), st.Tpix())
 	})
 
 	// init executable lookup path.

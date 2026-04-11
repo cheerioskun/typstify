@@ -79,8 +79,10 @@ func (hv *HomeView) update(gtx C) {
 	// global key handler, without a focused target.
 	for {
 		e, ok := gtx.Event(
-			key.Filter{Name: "D", Required: key.ModShortcut},
-			key.Filter{Name: "K", Required: key.ModShortcut},
+			key.Filter{Name: "D", Required: key.ModShortcut}, // toggle hide/show of drawer.
+			key.Filter{Name: "K", Required: key.ModShortcut}, // toggle hide/show of console.
+			// key.Filter{Name: "O", Required: key.ModShortcut}, // show open project modal.
+			// key.Filter{Name: "T", Required: key.ModShortcut}, // show setting page.
 		)
 		if !ok {
 			break

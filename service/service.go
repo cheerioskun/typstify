@@ -76,6 +76,7 @@ func (s *ServiceFacade) Settings() *settings.Settings {
 }
 
 func (s *ServiceFacade) PkgService() *pkg.TypstPkgService {
+	s.pkgService.SetReporter(tpixCliReporter{c: s.consoleState}.Report)
 	return s.pkgService
 }
 

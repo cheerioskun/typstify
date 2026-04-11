@@ -196,14 +196,16 @@ func (vw *PkgListView) loadData(kind string, category string, query string) {
 	go func() {
 		vw.srv.EventBus().Emit(bus.TopicStatusbarNotifyEvent, statusbar.Notification{Content: i18n.Translate("Query packages...")})
 
+		cards := make([]*PkgCard, 0)
+
 		results, err := vw.srv.PkgService().SearchPkgs("", kind, category, query)
 		if err != nil {
+			vw.lastFetched.Store(&cards)
 			vw.srv.EventBus().Emit(bus.TopicStatusbarNotifyEvent, statusbar.Notification{Content: i18n.Translate("Query packages failed: ") + err.Error()})
+			return
 		}
 
-		cards := make([]*PkgCard, 0)
 		for _, p := range results {
-
 			card := newPkgCard(p,
 				func(pkgInfo *pkg.TypstPkg) {
 					vw.downloadPkg(pkgInfo)

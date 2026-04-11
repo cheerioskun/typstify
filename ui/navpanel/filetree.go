@@ -187,7 +187,7 @@ func (tn *FileTreeNav) Layout(gtx C, th *theme.Theme) D {
 
 	if tn.tree == nil {
 		return layout.UniformInset(unit.Dp(8)).Layout(gtx, func(gtx C) D {
-			lb := material.Label(th.Theme, th.TextSize*0.9, i18n.Translate("No open projects."))
+			lb := material.Label(th.Theme, th.TextSize*0.9, i18n.Translate("No open project."))
 			lb.Font.Style = font.Italic
 			lb.Color = misc.WithAlpha(th.Fg, 0xb6)
 			return lb.Layout(gtx)

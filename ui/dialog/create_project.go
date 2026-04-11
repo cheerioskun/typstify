@@ -5,6 +5,7 @@ import (
 	"log"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"gioui.org/layout"
 	"gioui.org/text"
@@ -17,6 +18,7 @@ import (
 	"looz.ws/typstify/service"
 	"looz.ws/typstify/service/bus"
 	"looz.ws/typstify/typst"
+	"looz.ws/typstify/ui/statusbar"
 	"looz.ws/typstify/widgets/icons"
 )
 
@@ -101,7 +103,11 @@ func (d *CreateProjectDialog) createDocumentProject(req *ProjectCreateReq) (stri
 
 	if req.TemplateName != "" {
 		dir := filepath.Join(req.ProjectDir, req.Name)
-		err := typst.InitCmd(req.TemplateName, dir, &typst.InitCmdOptions{
+		_, err := d.srv.PkgService().DownloadWithSpec(req.TemplateName)
+		if err != nil {
+			return "", err
+		}
+		err = typst.InitCmd(req.TemplateName, dir, &typst.InitCmdOptions{
 			PackagePath:      d.srv.Settings().Typst().PackageDir,
 			PackageCachePath: d.srv.Settings().Typst().PackageCacheDir,
 		})
@@ -134,42 +140,50 @@ func (d *CreateProjectDialog) createPackageProject(req *ProjectCreateReq) (strin
 }
 
 func (d *CreateProjectDialog) OnConfirm() error {
-	var req ProjectCreateReq
-	var err error
-	var dir string
+	go func() {
+		var req ProjectCreateReq
+		var err error
+		var dir string
 
-	switch d.kindEnum.Value {
-	case string(DocumentKind):
-		req = ProjectCreateReq{
-			Kind:         DocumentKind,
-			Name:         d.nameInput.Text(),
-			ProjectDir:   d.projectDir,
-			TemplateName: d.templateInput.Text(),
+		switch d.kindEnum.Value {
+		case string(DocumentKind):
+			req = ProjectCreateReq{
+				Kind:         DocumentKind,
+				Name:         d.nameInput.Text(),
+				ProjectDir:   d.projectDir,
+				TemplateName: d.templateInput.Text(),
+			}
+			dir, err = d.createDocumentProject(&req)
+		case string(PackageKind):
+			req = ProjectCreateReq{
+				ProjectDir: d.projectDir,
+				Kind:       PackageKind,
+				Name:       d.nameInput.Text(),
+			}
+
+			dir, err = d.createPackageProject(&req)
+		case string(TemplateKind):
+			req = ProjectCreateReq{
+				ProjectDir: d.projectDir,
+				Kind:       TemplateKind,
+				Name:       d.nameInput.Text(),
+			}
+
+			dir, err = d.createPackageProject(&req)
 		}
-		dir, err = d.createDocumentProject(&req)
-	case string(PackageKind):
-		req = ProjectCreateReq{
-			ProjectDir: d.projectDir,
-			Kind:       PackageKind,
-			Name:       d.nameInput.Text(),
+
+		if err != nil {
+			d.srv.EventBus().Emit(bus.TopicStatusbarNotifyEvent, statusbar.Notification{
+				Content:  i18n.Translate("Create project error: %s", err.Error()),
+				Level:    2,
+				Duration: time.Second * 8,
+			})
+			return
 		}
 
-		dir, err = d.createPackageProject(&req)
-	case string(TemplateKind):
-		req = ProjectCreateReq{
-			ProjectDir: d.projectDir,
-			Kind:       TemplateKind,
-			Name:       d.nameInput.Text(),
-		}
+		d.srv.EventBus().Emit(bus.TopicProjectCreate, dir)
+	}()
 
-		dir, err = d.createPackageProject(&req)
-	}
-
-	if err != nil {
-		return err
-	}
-
-	d.srv.EventBus().Emit(bus.TopicProjectCreate, dir)
 	return nil
 }
 

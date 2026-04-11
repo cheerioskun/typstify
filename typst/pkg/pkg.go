@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
+	cli "github.com/typstify/tpix-cli"
 	tpix "github.com/typstify/tpix-cli"
 	"github.com/typstify/tpix-cli/api"
 	"looz.ws/typstify/service/settings"
@@ -26,6 +27,8 @@ type TypstPkgService struct {
 	cacheDir   string
 	tpixConfig *settings.TpixSettings
 	remoteRepo
+
+	reporter cli.ReportFunc
 }
 
 func (p *TypstPkg) ThumbUrl(size string) string {
@@ -65,6 +68,10 @@ func NewTypstPkgService(config *settings.TypstSettings, tpixConfig *settings.Tpi
 	}
 }
 
+func (s *TypstPkgService) SetReporter(reporter cli.ReportFunc) {
+	s.reporter = reporter
+}
+
 // Create a empty package using builtin template manifest. Returning the dir of
 // of package, and a optional error.
 func (s *TypstPkgService) CreatePkg(pkgDir string, name string, isTemplate bool) (string, error) {
@@ -98,5 +105,10 @@ func (s *TypstPkgService) Download(namespace string, name string, version string
 		spec += ":" + version
 	}
 
-	return tpix.DownloadPackage(spec, s.cacheDir, false, nil)
+	return tpix.DownloadPackage(spec, s.cacheDir, false, s.reporter)
+}
+
+func (s *TypstPkgService) DownloadWithSpec(spec string) (int, error) {
+
+	return tpix.DownloadPackage(spec, s.cacheDir, false, s.reporter)
 }

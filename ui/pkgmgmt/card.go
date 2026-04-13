@@ -232,7 +232,7 @@ func (c *PkgCard) openPkgDocPage() {
 	if c.pkgInfo.IsCached {
 		return
 	}
-	giohyperlink.Open(fmt.Sprintf("https://tpix.typstify.com/packages/preview/%s", c.pkgInfo.Name))
+	giohyperlink.Open(fmt.Sprintf("https://tpix.typstify.com/packages/%s/%s", c.pkgInfo.Namespace, c.pkgInfo.Name))
 }
 
 func (t *PkgThumb) Layout(gtx C, th *theme.Theme) D {

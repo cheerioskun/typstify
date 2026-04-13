@@ -28,6 +28,7 @@ import (
 	"looz.ws/typstify/ui/viewer"
 	"looz.ws/typstify/utils"
 	"looz.ws/typstify/widgets/filetree"
+	"looz.ws/typstify/widgets/menu"
 )
 
 type (
@@ -123,6 +124,8 @@ func (tn *FileTreeNav) switchRoot() {
 		log.Println("file tree error: ", err)
 		tn.srv.EventBus().Emit(bus.TopicStatusbarNotifyEvent, statusbar.Notification{Content: err.Error(), Level: 1})
 	}
+
+	newTree.ExtraMenuOptionProvider = tn.extraMenuOptions
 
 	tn.tree = newTree
 
@@ -257,6 +260,81 @@ func (tn *FileTreeNav) onFileDeleted(node *filetree.FileNode) {
 			tn.tree.Remove(node)
 		}
 	}()
+}
+
+func (tn *FileTreeNav) extraMenuOptions(node *filetree.FileNode) [][]menu.MenuOption {
+	isPackage := isPackageProject(tn.tree.Root())
+	publishPackageOpt := menu.MenuOption{
+		OnClicked: func(gtx layout.Context) error {
+			if !isPackage {
+				return nil
+			}
+
+			return nil
+		},
+
+		Layout: func(gtx layout.Context, th *theme.Theme) layout.Dimensions {
+			name := i18n.Translate("Publish Package")
+			label := material.Label(th.Theme, th.TextSize, name)
+			if !isPackage {
+				label.Color = utils.DisableColor(th.Fg)
+			}
+			return label.Layout(gtx)
+		},
+	}
+
+	syncDependenciesOpt := menu.MenuOption{
+		OnClicked: func(gtx layout.Context) error {
+			go func() {
+				err := tn.srv.PkgService().PullDependencies(tn.tree.Root())
+				if err != nil {
+					tn.srv.EventBus().Emit(bus.TopicStatusbarNotifyEvent, statusbar.Notification{Content: i18n.Translate("pull dependencies error: %s", err.Error()), Level: 2})
+					return
+				}
+				tn.srv.EventBus().Emit(bus.TopicStatusbarNotifyEvent, statusbar.Notification{Content: i18n.Translate("pull dependencies succeeded!")})
+
+			}()
+			return nil
+		},
+
+		Layout: func(gtx layout.Context, th *theme.Theme) layout.Dimensions {
+			name := i18n.Translate("Sync Dependencies")
+			return material.Label(th.Theme, th.TextSize, name).Layout(gtx)
+		},
+	}
+
+	syncBibOpt := menu.MenuOption{
+		OnClicked: func(gtx layout.Context) error {
+
+			return nil
+		},
+
+		Layout: func(gtx layout.Context, th *theme.Theme) layout.Dimensions {
+			name := i18n.Translate("Sync Bibliographies")
+			return material.Label(th.Theme, th.TextSize, name).Layout(gtx)
+		},
+	}
+
+	options := [][]menu.MenuOption{}
+	if tn.tree.Root() == node.Path {
+		options = append(options, []menu.MenuOption{publishPackageOpt, syncDependenciesOpt})
+	}
+
+	if node.IsDir() {
+		options = append(options, []menu.MenuOption{syncBibOpt})
+	}
+
+	return options
+}
+
+func isPackageProject(projectDir string) bool {
+	manifestPath := filepath.Join(projectDir, "typst.toml")
+	if _, err := os.Stat(manifestPath); err != nil {
+		return false
+	}
+
+	return true
+
 }
 
 func onDropConfirmFunc(vm view.ViewManager, rootDir string) filetree.OnDropConfirmFunc {

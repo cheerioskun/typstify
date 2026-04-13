@@ -112,3 +112,18 @@ func (s *TypstPkgService) DownloadWithSpec(spec string) (int, error) {
 
 	return tpix.DownloadPackage(spec, s.cacheDir, false, s.reporter)
 }
+
+func (s *TypstPkgService) PullDependencies(projectDir string) error {
+	return tpix.DownloadProjectDependencies(projectDir, s.cacheDir, false, s.reporter)
+}
+
+func (s *TypstPkgService) Bundle(projectDir string, outputDir string) error {
+	outputFile := filepath.Join(outputDir, filepath.Base(projectDir)+".tar.gz")
+
+	_, err := tpix.BundlePackage(projectDir, outputFile, nil)
+	return err
+}
+
+func (s *TypstPkgService) Push(packagePath string, namespace string) error {
+	return tpix.PushPackage(packagePath, namespace, s.reporter)
+}

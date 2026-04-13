@@ -72,11 +72,12 @@ type TreeView struct {
 	isEditingNode  bool
 
 	// callback which is called when file is created or renamed.
-	OnFileUpdatedFunc  func(node *FileNode, oldPath string)
-	OnFileRemoveFunc   func(node *FileNode)
-	OnFileSelectedFunc func(node *FileNode)
-	OnDropConfirmFunc  OnDropConfirmFunc
-	OnErrorFunc        func(err error)
+	OnFileUpdatedFunc       func(node *FileNode, oldPath string)
+	OnFileRemoveFunc        func(node *FileNode)
+	OnFileSelectedFunc      func(node *FileNode)
+	OnDropConfirmFunc       OnDropConfirmFunc
+	OnErrorFunc             func(err error)
+	ExtraMenuOptionProvider MenuOptionFunc
 }
 
 func NewTreeView(rootNode *FileNode) *TreeView {
@@ -743,7 +744,14 @@ func (t *TreeView) getContextMenuOptions(node *FileNode) [][]menu.MenuOption {
 	}
 
 	menuOptionFunc := FileTreeMenuOptions(t)
-	return menuOptionFunc(node)
+	options := menuOptionFunc(node)
+
+	if t.ExtraMenuOptionProvider != nil {
+		extra := t.ExtraMenuOptionProvider(node)
+		options = append(options, extra...)
+	}
+
+	return options
 }
 
 func (t *TreeView) watchFSEvents(onFsEvent func(fsnotify.Event)) {

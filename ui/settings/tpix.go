@@ -3,6 +3,7 @@ package settings
 import (
 	"fmt"
 	"log"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -44,8 +45,8 @@ type TpixSettingsView struct {
 	tpixWebsiteLink  widget.Clickable
 	subscriptionLink widget.Clickable
 
-	isInitialized bool
-	lastErr       error
+	initOnce sync.Once
+	lastErr  error
 }
 
 func (t *TpixSettingsView) Title() string {
@@ -53,12 +54,11 @@ func (t *TpixSettingsView) Title() string {
 }
 
 func (t *TpixSettingsView) update(gtx C) {
-	if !t.isInitialized {
+	t.initOnce.Do(func() {
 		if t.setting.LoginAt > 0 {
-			t.updateState()
+			go t.updateState()
 		}
-		t.isInitialized = true
-	}
+	})
 
 	if t.loginBtn.Clicked(gtx) {
 		go t.login()
@@ -122,6 +122,7 @@ func (t *TpixSettingsView) login() {
 	t.setting.Save()
 
 	t.session.Store(&session)
+	t.lastErr = nil
 }
 
 func (t *TpixSettingsView) updateState() {
@@ -144,6 +145,7 @@ func (t *TpixSettingsView) updateState() {
 	}
 
 	t.session.Store(&session)
+	t.lastErr = nil
 }
 
 func (t *TpixSettingsView) Layout(gtx C, th *theme.Theme) D {

@@ -32,11 +32,11 @@ var themeMap = map[string]UIPalette{
 		Palette: th.Palette{
 			Fg:            misc.HexColor(0xABB2BF),
 			Bg:            misc.HexColor(0x282C34),
-			ContrastFg:    misc.HexColor(0x1F1B24),
-			ContrastBg:    misc.HexColor(0x4B5263),
+			ContrastFg:    misc.HexColor(0xABB2BF),
+			ContrastBg:    misc.HexColor(0x5C6370), // Muted gray
 			Bg2:           misc.HexColor(0x21252B),
 			HoverAlpha:    36,
-			SelectedAlpha: 48,
+			SelectedAlpha: 60,
 		},
 		CodeColorScheme: "doom-one",
 	},
@@ -85,11 +85,11 @@ var themeMap = map[string]UIPalette{
 		Palette: th.Palette{
 			Fg:            misc.HexColor(0xD8DEE9),
 			Bg:            misc.HexColor(0x2E3440),
-			ContrastFg:    misc.HexColor(0x2E3440),
-			ContrastBg:    misc.HexColor(0x4C566A),
+			ContrastFg:    misc.HexColor(0xECEFF4),
+			ContrastBg:    misc.HexColor(0x88C0D0), // Aurora cyan
 			Bg2:           misc.HexColor(0x3B4252),
 			HoverAlpha:    25,
-			SelectedAlpha: 40,
+			SelectedAlpha: 60,
 		},
 		CodeColorScheme: "nord",
 	},

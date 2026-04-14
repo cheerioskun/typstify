@@ -35,14 +35,15 @@ var (
 
 type PkgListView struct {
 	*view.BaseView
-	srv          *service.ServiceFacade
-	vm           view.ViewManager
-	kindSelect   *widgets.Dropdown
-	searchInput  gvwidget.TextField
-	categoryList *CategoryList
-	packageList  *PkgList
-	cards        []*PkgCard
-	lastFetched  atomic.Pointer[[]*PkgCard]
+	srv              *service.ServiceFacade
+	vm               view.ViewManager
+	kindSelect       *widgets.Dropdown
+	searchInput      gvwidget.TextField
+	categoryList     *CategoryList
+	packageList      *PkgList
+	cards            []*PkgCard
+	lastFetched      atomic.Pointer[[]*PkgCard]
+	lastFetchedCount int
 }
 
 func (vw *PkgListView) ID() view.ViewID {
@@ -55,6 +56,11 @@ func (vw *PkgListView) Title() string {
 
 func (vw *PkgListView) OnNavTo(intent view.Intent) error {
 	vw.BaseView.OnNavTo(intent)
+
+	go func() {
+		vw.loadData(vw.kindSelect.Value(), vw.categoryList.GetChecked(), vw.searchInput.Text())
+	}()
+
 	return nil
 }
 
@@ -198,8 +204,9 @@ func (vw *PkgListView) loadData(kind string, category string, query string) {
 
 		cards := make([]*PkgCard, 0)
 
-		results, err := vw.srv.PkgService().SearchPkgs("", kind, category, query)
+		results, count, err := vw.srv.PkgService().SearchPkgs("", kind, category, query)
 		if err != nil {
+			vw.lastFetchedCount = 0
 			vw.lastFetched.Store(&cards)
 			vw.srv.EventBus().Emit(bus.TopicStatusbarNotifyEvent, statusbar.Notification{Content: i18n.Translate("Query packages failed: ") + err.Error()})
 			return
@@ -215,6 +222,8 @@ func (vw *PkgListView) loadData(kind string, category string, query string) {
 		}
 
 		vw.lastFetched.Store(&cards)
+		vw.lastFetchedCount = count
+
 		vw.srv.EventBus().Emit(bus.TopicStatusbarNotifyEvent, statusbar.Notification{Content: i18n.Translate("Typst packages info loaded."), Level: 0})
 	}()
 }
@@ -238,7 +247,7 @@ func (vw *PkgListView) downloadPkg(pkgInfo *pkg.TypstPkg) {
 }
 
 func (vw *PkgListView) LayoutStatus(gtx C, th *theme.Theme) D {
-	pkgStatus := i18n.Translate("Found %d packages.", len(vw.packageList.cards))
+	pkgStatus := i18n.Translate("Found %d packages.", vw.lastFetchedCount)
 	return material.Label(th.Theme, th.TextSize*0.9, pkgStatus).Layout(gtx)
 }
 

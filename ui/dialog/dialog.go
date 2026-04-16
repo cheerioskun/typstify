@@ -193,13 +193,13 @@ func (item formItem) Layout(gtx C, th *theme.Theme, title, labelDesc string, w l
 				return lb.Layout(gtx)
 			}),
 			layout.Rigid(func(gtx C) D {
-				if labelDesc == "" {
+				if labelDesc == "" || item.Axis == layout.Horizontal {
 					return D{}
 				}
 				return layout.Spacer{Height: unit.Dp(8)}.Layout(gtx)
 			}),
 			layout.Rigid(func(gtx C) D {
-				if labelDesc == "" {
+				if labelDesc == "" || item.Axis == layout.Horizontal {
 					return D{}
 				}
 
@@ -208,7 +208,13 @@ func (item formItem) Layout(gtx C, th *theme.Theme, title, labelDesc string, w l
 				return lb.Layout(gtx)
 			}),
 
-			layout.Rigid(layout.Spacer{Height: unit.Dp(8)}.Layout),
+			layout.Rigid(func(gtx C) D {
+				if item.Axis == layout.Horizontal {
+					return layout.Spacer{Width: unit.Dp(8)}.Layout(gtx)
+				}
+
+				return layout.Spacer{Height: unit.Dp(8)}.Layout(gtx)
+			}),
 			layout.Rigid(func(gtx C) D {
 				return layout.UniformInset(unit.Dp(3)).Layout(gtx, w)
 			}),

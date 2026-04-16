@@ -1,6 +1,7 @@
 package navpanel
 
 import (
+	"image/color"
 	"io"
 	"log"
 	"os"
@@ -126,6 +127,7 @@ func (tn *FileTreeNav) switchRoot() {
 	}
 
 	newTree.ExtraMenuOptionProvider = tn.extraMenuOptions
+	newTree.NodeMarkerProvider = tn.nodeMarker
 
 	tn.tree = newTree
 
@@ -262,6 +264,41 @@ func (tn *FileTreeNav) onFileDeleted(node *filetree.FileNode) {
 	}()
 }
 
+func (tn *FileTreeNav) nodeMarker(nodePath string) *filetree.NodeMarker {
+	// First check if it's managed bibliography file.
+	settings := tn.srv.Workspace().LoadWorkspaceSettings()
+	if len(settings.BibFiles) > 0 {
+		relPath, err := filepath.Rel(tn.tree.Root(), nodePath)
+		if err != nil {
+			log.Println("get relative path error: ", err)
+			return nil
+		}
+
+		idx := slices.IndexFunc(settings.BibFiles, func(bib service.ManagedBibliography) bool {
+			return bib.File == relPath
+		})
+		if idx >= 0 {
+			return &filetree.NodeMarker{
+				Kind:  "bib",
+				Color: func(baseColor color.NRGBA) color.NRGBA { return utils.DisableColor(baseColor) },
+				Meta: map[string]any{
+					"meta": settings.BibFiles[idx],
+				},
+			}
+		}
+	}
+
+	// Then check if its git managed and has changes made.
+
+	// return &filetree.NodeMarker{
+	// 	Kind:  "git",
+	// 	Color: func(th *theme.Theme) color.NRGBA { return misc.WithAlpha(th.ContrastBg, 0x60) },
+	// }
+
+	// It's just regular node, do not set a marker.
+	return nil
+}
+
 func (tn *FileTreeNav) extraMenuOptions(node *filetree.FileNode) [][]menu.MenuOption {
 	isPackage := isPackageProject(tn.tree.Root())
 	isTpixLoggedIn := tn.srv.Settings().Tpix().LoginAt > 0
@@ -346,6 +383,39 @@ func (tn *FileTreeNav) extraMenuOptions(node *filetree.FileNode) [][]menu.MenuOp
 		},
 	}
 
+	bibInfoOpt := menu.MenuOption{
+		OnClicked: func(gtx layout.Context) error {
+			if !isTpixLoggedIn {
+				return nil
+			}
+
+			state := tn.tree.GetState(node.Path)
+			if state.Marker == nil || state.Marker.Kind != "bib" {
+				return nil
+			}
+
+			meta := state.Marker.Meta["meta"]
+
+			// open the info dialog
+			tn.vm.RequestSwitch(view.Intent{
+				Target:      dialog.ViewBibInfoDialogViewID,
+				ShowAsModal: true,
+				Params:      map[string]any{"meta": meta},
+			})
+
+			return nil
+		},
+
+		Layout: func(gtx layout.Context, th *theme.Theme) layout.Dimensions {
+			name := i18n.Translate("View Bibliography Info")
+			label := material.Label(th.Theme, th.TextSize, name)
+			if !isTpixLoggedIn {
+				label.Color = utils.DisableColor(th.Fg)
+			}
+			return label.Layout(gtx)
+		},
+	}
+
 	options := [][]menu.MenuOption{}
 	if tn.tree.Root() == node.Path {
 		options = append(options, []menu.MenuOption{publishPackageOpt, syncDependenciesOpt})
@@ -353,6 +423,11 @@ func (tn *FileTreeNav) extraMenuOptions(node *filetree.FileNode) [][]menu.MenuOp
 
 	if node.IsDir() {
 		options = append(options, []menu.MenuOption{syncBibOpt})
+	} else {
+		state := tn.tree.GetState(node.Path)
+		if state.Marker != nil && state.Marker.Kind == "bib" {
+			options = append(options, []menu.MenuOption{bibInfoOpt})
+		}
 	}
 
 	return options

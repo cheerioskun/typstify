@@ -87,12 +87,21 @@ func (fn *FlatNode) layout(gtx layout.Context, th *theme.Theme) layout.Dimension
 						}
 					}
 
+					iconColor := th.ContrastBg
+					if fn.State.Marker != nil {
+						iconColor = fn.State.Marker.Color(iconColor)
+					}
+
 					return layout.Inset{Right: unit.Dp(6)}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
-						return icon.Layout(gtx, th.ContrastBg, th.TextSize*1.1)
+						return icon.Layout(gtx, iconColor, th.TextSize*1.1)
 					})
 				}),
 				layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
 					gtx.Constraints.Min.X = gtx.Constraints.Max.X
+					if fn.State.Marker != nil {
+						fn.State.Editable.Color = fn.State.Marker.Color(th.Fg)
+					}
+
 					return fn.State.Editable.Layout(gtx, th.Theme)
 				}),
 			)

@@ -35,7 +35,10 @@ type SyncBibDialog struct {
 	loadErr                error
 }
 
-var SyncBibDialogViewID = view.NewViewID("SyncBibDialogView")
+var (
+	SyncBibDialogViewID     = view.NewViewID("SyncBibDialogView")
+	ViewBibInfoDialogViewID = view.NewViewID("ViewBibInfoDialogView")
+)
 
 func NewSyncBibDialog(srv *service.ServiceFacade) view.View {
 	bibDialog := &SyncBibDialog{srv: srv}
@@ -131,20 +134,17 @@ func (d *SyncBibDialog) OnConfirm() error {
 		return err
 	}
 
-	settings := service.WorkspaceSettings{}
-	settings.BibFiles = []service.ManagedBibliography{
-		{
-			ExportID: exportID,
-			File:     filepath.Join(d.parentDir, filename),
-			Meta: service.BibliographyExportMeta{
-				Namespace:  namespaceName,
-				Library:    libraryName,
-				Collection: collectionName,
-				Format:     format,
-			},
+	bibFile := service.ManagedBibliography{
+		ExportID: exportID,
+		File:     filepath.Join(d.parentDir, filename),
+		Meta: service.BibliographyExportMeta{
+			Namespace:  namespaceName,
+			Library:    libraryName,
+			Collection: collectionName,
+			Format:     format,
 		},
 	}
-	d.srv.Workspace().SaveWorkspaceSetting(settings)
+	d.srv.Workspace().SaveManagedBibliography(bibFile)
 	d.srv.EventBus().Emit(bus.TopicStatusbarNotifyEvent, statusbar.Notification{
 		Content: i18n.Translate("Creating managed bibliography succeeded: %s", filename),
 	})
@@ -196,6 +196,119 @@ func (d *SyncBibDialog) LayoutBody(gtx C, th *theme.Theme) D {
 }
 
 func (d *SyncBibDialog) layoutErr(gtx C, th *theme.Theme, err error) D {
+	label := material.Label(th.Theme, th.TextSize, err.Error())
+	label.Color = color.NRGBA{R: 255, A: 255}
+	label.Alignment = text.Start
+	return label.Layout(gtx)
+}
+
+type BibInfoDialog struct {
+	srv       *service.ServiceFacade
+	meta      service.ManagedBibliography
+	pathInput gw.TextField
+
+	err error
+}
+
+func NewBibInfoDialog(srv *service.ServiceFacade) view.View {
+	bibDialog := &BibInfoDialog{srv: srv}
+
+	dialog := NewDialogModal(CreateProjectDialogViewID, i18n.Translate("View Managed Bibliography"), i18n.Translate("Unlink"))
+	dialog.Dialog = bibDialog
+	return dialog
+}
+
+func (d *BibInfoDialog) OnInit(intent view.Intent) error {
+	metaVal, ok := intent.Params["meta"]
+	if !ok {
+		return nil
+	}
+
+	d.meta = metaVal.(service.ManagedBibliography)
+	d.pathInput.SetText(d.meta.File)
+
+	return nil
+}
+
+func (d *BibInfoDialog) OnConfirm() error {
+	go d.unlinkRemote()
+	return nil
+}
+
+func (d *BibInfoDialog) unlinkRemote() error {
+	err := cli.DeleteZoteroExport(d.meta.ExportID, nil)
+	if err != nil {
+		d.srv.EventBus().Emit(bus.TopicStatusbarNotifyEvent, statusbar.Notification{
+			Content: i18n.Translate("Unlink managed bibliography error: %s", err.Error()),
+			Level:   2,
+		})
+		return err
+	}
+
+	d.srv.Workspace().RemoveManagedBibliography(d.meta.File)
+	d.srv.EventBus().Emit(bus.TopicStatusbarNotifyEvent, statusbar.Notification{
+		Content: i18n.Translate("Unlink managed bibliography succeeded: %s", d.meta.File),
+	})
+
+	return err
+}
+
+func (d *BibInfoDialog) LayoutBody(gtx C, th *theme.Theme) D {
+
+	return layout.Flex{
+		Axis: layout.Vertical,
+	}.Layout(gtx,
+
+		layout.Rigid(func(gtx C) D {
+			return formItem{Axis: layout.Vertical}.Layout(gtx, th, i18n.Translate("Bibliography File Name"),
+				i18n.Translate("The path of the managed bibliography file. Clicking unlink below will turn it to a regular file, and it will not sync with remote Zotero collection anymore."),
+				func(gtx C) D {
+					d.pathInput.Alignment = text.Start
+					d.pathInput.SingleLine = true
+					d.pathInput.State().ReadOnly = true
+					return d.pathInput.Layout(gtx, th, "")
+				})
+		}),
+
+		layout.Rigid(func(gtx C) D {
+			return formItem{
+				Axis:      layout.Horizontal,
+				Alignment: layout.Middle,
+			}.Layout(gtx, th, i18n.Translate("Format:"),
+				"",
+				func(gtx C) D {
+					return material.Label(th.Theme, th.TextSize, d.meta.Meta.Format).Layout(gtx)
+				})
+		}),
+
+		layout.Rigid(func(gtx C) D {
+			return formItem{Axis: layout.Vertical}.Layout(gtx, th, i18n.Translate("Zotero Collection Info"),
+				"",
+				func(gtx C) D {
+					return layout.Flex{
+						Axis: layout.Vertical,
+					}.Layout(gtx,
+						layout.Rigid(func(gtx C) D {
+							if d.meta.Meta.Namespace == "" {
+								return D{}
+							}
+
+							return material.Label(th.Theme, th.TextSize, i18n.Translate("Namespace: %s", d.meta.Meta.Namespace)).Layout(gtx)
+						}),
+						layout.Rigid(func(gtx C) D {
+							return material.Label(th.Theme, th.TextSize, i18n.Translate("Library: %s", d.meta.Meta.Library)).Layout(gtx)
+						}),
+						layout.Rigid(func(gtx C) D {
+							return material.Label(th.Theme, th.TextSize, i18n.Translate("Collection: %s", d.meta.Meta.Collection)).Layout(gtx)
+						}),
+					)
+				})
+		}),
+	)
+
+}
+
+func (d *BibInfoDialog) layoutErr(gtx C, th *theme.Theme, err error) D {
 	label := material.Label(th.Theme, th.TextSize, err.Error())
 	label.Color = color.NRGBA{R: 255, A: 255}
 	label.Alignment = text.Start

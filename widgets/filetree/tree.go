@@ -80,6 +80,10 @@ type TreeView struct {
 	OnDropConfirmFunc       OnDropConfirmFunc
 	OnErrorFunc             func(err error)
 	ExtraMenuOptionProvider MenuOptionFunc
+
+	// A provider which is called when fetching NodeState. Make
+	// sure the call of this function has low overhead.
+	NodeMarkerProvider func(nodePath string) *NodeMarker
 }
 
 func NewTreeView(rootNode *FileNode) *TreeView {
@@ -115,13 +119,20 @@ func (t *TreeView) GetState(path string) *NodeState {
 	t.statesLock.Lock()
 	defer t.statesLock.Unlock()
 
-	if state, exists := t.states[path]; exists {
-		return state
+	var state *NodeState
+	if st, exists := t.states[path]; exists {
+		state = st
+	} else {
+		state = &NodeState{}
+		state.Editable = widgets.EditableLabel(filepath.Base(path))
+		t.states[path] = state
 	}
-	newState := &NodeState{}
-	newState.Editable = widgets.EditableLabel(filepath.Base(path))
-	t.states[path] = newState
-	return newState
+
+	if t.NodeMarkerProvider != nil {
+		state.Marker = t.NodeMarkerProvider(path)
+	}
+
+	return state
 }
 
 func (t *TreeView) deleteState(path string) {

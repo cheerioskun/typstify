@@ -1,6 +1,8 @@
 package filetree
 
 import (
+	"image/color"
+
 	"gioui.org/unit"
 	"gioui.org/widget"
 	"github.com/oligo/gioview/explorer"
@@ -21,6 +23,7 @@ type NodeState struct {
 	DndInited bool
 	Editable  *widgets.Editable
 	Label     widgets.InteractiveLabel
+	Marker    *NodeMarker
 }
 
 func (n *NodeState) Droppable() bool {
@@ -41,6 +44,14 @@ type FlatNode struct {
 type TreeState struct {
 	Path          string
 	ExpandedNodes []string
+}
+
+// NodeMarker decorate the file node and also can change
+// its behavior based on its kind and meta data.
+type NodeMarker struct {
+	Kind  string
+	Color func(baseColor color.NRGBA) color.NRGBA
+	Meta  map[string]any
 }
 
 func isAncestor(ancestor, childNode *FileNode) bool {

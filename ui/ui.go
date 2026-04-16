@@ -134,6 +134,7 @@ func (ui *UI) registerViews() {
 	vm.Register(dialog.OpenWithExternalAppDialogViewID, dialog.NewOpenWithExternalAppDialog)
 	vm.Register(dialog.PublishPkgDialogViewID, func() view.View { return dialog.NewPublishPkgDialog(ui.srv) })
 	vm.Register(dialog.SyncBibDialogViewID, func() view.View { return dialog.NewSyncBibDialog(ui.srv) })
+	vm.Register(dialog.ViewBibInfoDialogViewID, func() view.View { return dialog.NewBibInfoDialog(ui.srv) })
 
 	ui.vm = vm
 	ui.srv.SetViewManager(vm.ViewManager)

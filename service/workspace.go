@@ -58,6 +58,7 @@ type WorkspaceService struct {
 	watcherTicker *time.Ticker
 	mu            sync.Mutex
 	watcherCancel context.CancelFunc
+	settingCache  *WorkspaceSettings
 }
 
 func NewWorkspaceService(dataDir string) *WorkspaceService {
@@ -83,14 +84,8 @@ func (rp *WorkspaceService) AddRecent(projectDir string) {
 	rp.stateIndex.Save(utils.SKey(projectDir), rp.currentWorkspace)
 	rp.allCache = rp.allCache[:0] // invalidate cache
 
-	// stop the last watcher
-	if rp.watcherCancel != nil {
-		rp.watcherCancel()
-	}
-	// start bib sync watcher
-	ctx, cancel := context.WithCancel(context.Background())
-	rp.watcherCancel = cancel
-	rp.startWatcher(ctx)
+	rp.restartWatcher()
+	rp.settingCache = nil
 }
 
 func (rp *WorkspaceService) SaveSnapshot(treeState *filetree.TreeState, openedFiles []string) {
@@ -195,6 +190,10 @@ func (rp *WorkspaceService) LoadWorkspaceSettings() WorkspaceSettings {
 		return WorkspaceSettings{}
 	}
 
+	if rp.settingCache != nil {
+		return *rp.settingCache
+	}
+
 	typstifyDir := filepath.Join(rp.currentWorkspace.Path, ".typstify")
 	settingsFile := filepath.Join(typstifyDir, "settings.json")
 
@@ -219,19 +218,13 @@ func (rp *WorkspaceService) LoadWorkspaceSettings() WorkspaceSettings {
 		return WorkspaceSettings{}
 	}
 
+	rp.settingCache = &settings
+
 	return settings
 }
 
 // SaveWorkspaceSetting serialize setting to json and write to $projectDir/.typstify/settings.json
-func (rp *WorkspaceService) SaveWorkspaceSetting(setting WorkspaceSettings) {
-	existing := rp.LoadWorkspaceSettings()
-
-	rp.mu.Lock()
-	defer rp.mu.Unlock()
-
-	existing.BibFiles = append(existing.BibFiles, setting.BibFiles...)
-	existing.BibFiles = slices.Compact(existing.BibFiles)
-
+func (rp *WorkspaceService) saveWorkspaceSetting(setting WorkspaceSettings) {
 	if rp.currentWorkspace.Path == "" {
 		return
 	}
@@ -245,7 +238,7 @@ func (rp *WorkspaceService) SaveWorkspaceSetting(setting WorkspaceSettings) {
 		return
 	}
 
-	data, err := json.MarshalIndent(existing, "", "  ")
+	data, err := json.MarshalIndent(setting, "", "  ")
 	if err != nil {
 		log.Printf("serialize workspace settings failed: %v", err)
 		return
@@ -255,46 +248,136 @@ func (rp *WorkspaceService) SaveWorkspaceSetting(setting WorkspaceSettings) {
 	if err != nil {
 		log.Printf("write workspace settings failed: %v", err)
 	}
+
+	// clear cached setting
+	rp.settingCache = nil
 }
 
-func (rp *WorkspaceService) startWatcher(ctx context.Context) {
-	rp.watcherTicker = time.NewTicker(time.Minute * 5)
+// SaveManagedBibliography saves the managed bibliography file info in settings.json.
+func (rp *WorkspaceService) SaveManagedBibliography(bib ManagedBibliography) {
+	if rp.currentWorkspace.Path == "" {
+		return
+	}
+
+	existing := rp.LoadWorkspaceSettings()
+
+	rp.mu.Lock()
+	defer rp.mu.Unlock()
+
+	// create an empty file at once to prevent it from being deleted in the watcher loop.
+	err := os.WriteFile(filepath.Join(rp.currentWorkspace.Path, bib.File), []byte(""), 0644)
+	if err != nil {
+		log.Printf("write bib file failed: %v", err)
+	}
+
+	existing.BibFiles = append(existing.BibFiles, bib)
+	existing.BibFiles = slices.Compact(existing.BibFiles)
+
+	rp.saveWorkspaceSetting(existing)
+	// reset the watcher
+	rp.restartWatcher()
+}
+
+func (rp *WorkspaceService) RemoveManagedBibliography(bibPath string) {
+	if rp.currentWorkspace.Path == "" {
+		return
+	}
+
+	existing := rp.LoadWorkspaceSettings()
+
+	rp.mu.Lock()
+	defer rp.mu.Unlock()
+
+	existing.BibFiles = slices.DeleteFunc(
+		existing.BibFiles,
+		func(bib ManagedBibliography) bool {
+			return bib.File == bibPath
+		},
+	)
+
+	rp.saveWorkspaceSetting(existing)
+	// reset the watcher
+	rp.restartWatcher()
+}
+
+func (rp *WorkspaceService) restartWatcher() {
 	rootDir := rp.currentWorkspace.Path
 	if rootDir == "" {
 		return
 	}
 
+	// stop the last watcher
+	if rp.watcherCancel != nil {
+		rp.watcherCancel()
+	}
+
+	// start bib sync watcher
+	ctx, cancel := context.WithCancel(context.Background())
+	rp.watcherCancel = cancel
+
+	if rp.watcherTicker != nil {
+		rp.watcherTicker.Reset(time.Minute * 3)
+	} else {
+		rp.watcherTicker = time.NewTicker(time.Minute * 3)
+	}
+
 	syncBib := func() {
 		settings := rp.LoadWorkspaceSettings()
+		// remove obsolete files that have be deleted from the disk
+		settings.BibFiles = slices.DeleteFunc(
+			settings.BibFiles,
+			func(bib ManagedBibliography) bool {
+				if exists, _ := utils.CheckFileExists(filepath.Join(rootDir, bib.File)); !exists {
+					if err := cli.DeleteZoteroExport(bib.ExportID, nil); err != nil {
+						log.Println("delete zotero export failed: ", err)
+					}
+
+					return true
+				}
+
+				return false
+			},
+		)
+
+		rp.mu.Lock()
+		rp.saveWorkspaceSetting(settings)
+		rp.mu.Unlock()
+
+		settings = rp.LoadWorkspaceSettings()
+
 		for _, mb := range settings.BibFiles {
 			if mb.ExportID != "" {
-				file, err := os.OpenFile(filepath.Join(rootDir, mb.File), os.O_RDWR|os.O_CREATE, 0644)
+				file, err := os.OpenFile(filepath.Join(rootDir, mb.File), os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644)
 				if err != nil {
 					log.Println("open file error: ", err)
-					return
+					continue
 				}
+				defer file.Close()
 				err = cli.FetchZoteroExport(mb.ExportID, file)
 				if err != nil {
 					log.Println("export error: ", err)
-					return
+					continue
 				}
 
 				log.Println("sync bibliography success from TPIX: ", mb.ExportID)
 			}
 		}
 	}
-	// sync once at start time.
-	go syncBib()
 
 	go func() {
-		select {
-		case <-ctx.Done():
-			return
-		case <-rp.watcherTicker.C:
-			syncBib()
+		// sync once at start time.
+		syncBib()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-rp.watcherTicker.C:
+				syncBib()
+			}
 		}
 	}()
-
+	log.Println("restarted watcher")
 }
 
 func openDB(dbFile string) *bolt.DB {

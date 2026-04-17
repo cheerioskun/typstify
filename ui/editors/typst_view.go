@@ -300,34 +300,57 @@ func (te *TypstEditor) OnFinish() {
 }
 
 func (te *TypstEditor) openLink(link string, external bool) {
-	pattern := `(\.png|\.jpg|\.jpeg|\.gif|\.PNG|\.JPG|\.JPEG|\.GIF)$`
-	matched, err := regexp.MatchString(pattern, link)
-
-	if external {
-		if matched {
-			utils.OpenInExternalApp(link)
-			return
-		}
-		// open doc in browser
+	isHttpLink := strings.HasPrefix(link, "https://") && strings.HasPrefix(link, "http://")
+	if isHttpLink {
 		if err := giohyperlink.Open(link); err != nil {
 			log.Printf("error: opening hyperlink: %v, url: %s", err, link)
 		}
-	} else {
-		if err == nil && matched {
-			openIntent := view.Intent{
-				Target:      viewer.ImgViewerViewID,
-				ShowAsModal: false,
-				RequireNew:  true,
-				Params: map[string]interface{}{
-					"path": link,
-				},
-			}
-			te.srv.RequestSwitch(openIntent)
-		} else {
-			utils.OpenInExternalApp(link)
-		}
+		return
 	}
-	// gtx.Execute(op.InvalidateCmd{})
+
+	if external {
+		utils.OpenInExternalApp(link)
+		return
+	}
+
+	// Open using internal views.
+
+	pattern := `(\.png|\.jpg|\.jpeg|\.gif|\.PNG|\.JPG|\.JPEG|\.GIF)$`
+	matched, err := regexp.MatchString(pattern, link)
+
+	if err == nil && matched {
+		openIntent := view.Intent{
+			Target:      viewer.ImgViewerViewID,
+			ShowAsModal: false,
+			RequireNew:  true,
+			Params: map[string]interface{}{
+				"path": link,
+			},
+		}
+		te.srv.RequestSwitch(openIntent)
+		return
+
+	}
+
+	if utils.IsTextFile(link) {
+		target := GenericTextEditorViewID
+		if strings.HasSuffix(link, ".typ") {
+			target = TypstEditorViewID
+		}
+		// open as text
+		intent := view.Intent{
+			Target:      target,
+			ShowAsModal: false,
+			RequireNew:  true,
+			Params: map[string]interface{}{
+				"path": link,
+			},
+		}
+		te.srv.RequestSwitch(intent)
+		return
+	} else {
+		utils.OpenInExternalApp(link)
+	}
 }
 
 func NewTypstEditor(srv *service.ServiceFacade) view.View {

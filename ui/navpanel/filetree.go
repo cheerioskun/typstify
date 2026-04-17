@@ -2,19 +2,16 @@ package navpanel
 
 import (
 	"image/color"
-	"io"
 	"log"
 	"os"
 	"path/filepath"
 	"slices"
-	"unicode/utf8"
 
 	"gioui.org/font"
 	"gioui.org/layout"
 	"gioui.org/unit"
 	"gioui.org/widget"
 	"gioui.org/widget/material"
-	"github.com/alecthomas/chroma/v2/lexers"
 	"github.com/oligo/gioview/explorer"
 	"github.com/oligo/gioview/misc"
 	"github.com/oligo/gioview/theme"
@@ -492,7 +489,7 @@ func onFileSelected(node *filetree.FileNode) view.Intent {
 	}
 
 	// detect its MIME type to see if it's a text file.
-	if isTextFile(node) {
+	if utils.IsTextFile(node.Path) {
 		// open as plain text
 		return view.Intent{
 			Target:      editors.GenericTextEditorViewID,
@@ -512,44 +509,4 @@ func onFileSelected(node *filetree.FileNode) view.Intent {
 		},
 	}
 
-}
-
-// ported from https://cs.opensource.google/go/x/tools/+/refs/tags/v0.26.0:godoc/util/util.go;l=69
-func isTextFile(node *filetree.FileNode) bool {
-	if lexer := lexers.Match(node.Path); lexer != nil {
-		return true
-	}
-
-	// the extension is not known; read an initial chunk
-	// of the file and check if it looks like text
-	f, err := os.Open(node.Path)
-	if err != nil {
-		return false
-	}
-	defer f.Close()
-
-	var buf [1024]byte
-	n, err := f.Read(buf[0:])
-	if err != nil {
-		if err == io.EOF && n == 0 {
-			return true
-		}
-		return false
-	}
-
-	// return IsText(buf[0:n])
-
-	//  reports whether a significant prefix of buf looks like correct UTF-8;
-	// that is, if it is likely that s is human-readable text.
-	for i, c := range string(buf[0:n]) {
-		if i+utf8.UTFMax > len(buf) {
-			// last char may be incomplete - ignore
-			break
-		}
-		if c == 0xFFFD || c < ' ' && c != '\n' && c != '\t' && c != '\f' {
-			// decoding error or control character - not a text file
-			return false
-		}
-	}
-	return true
 }

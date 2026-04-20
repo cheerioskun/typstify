@@ -246,7 +246,7 @@ func (me *TextEditor) update(gtx layout.Context, th *theme.Theme, settings *sett
 		me.OnOpenLink(link, external)
 	}
 
-	if hunks := me.pendingHunks.Swap(nil); hunks != nil && len(*hunks) > 0 {
+	if hunks := me.pendingHunks.Swap(nil); hunks != nil && len(*hunks) >= 0 {
 		me.diffProvider.UpdateDiff(*hunks)
 		me.overviewRuler.UpdateDiffMarkers(*hunks)
 	}

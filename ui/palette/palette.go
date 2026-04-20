@@ -25,7 +25,7 @@ var themeMap = map[string]UIPalette{
 			HoverAlpha:    30,
 			SelectedAlpha: 50,
 		},
-		CodeColorScheme: "github",
+		CodeColorScheme: "emacs",
 	},
 
 	"Default Dark": {

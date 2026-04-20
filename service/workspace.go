@@ -31,7 +31,9 @@ type ManagedBibliography struct {
 }
 
 type WorkspaceSettings struct {
-	BibFiles []ManagedBibliography `json:"managed_bibs"`
+	// preview mode: document|slide
+	PreviewMode string                `json:"preview_mode"`
+	BibFiles    []ManagedBibliography `json:"managed_bibs"`
 }
 
 type WorkspaceState struct {
@@ -378,6 +380,20 @@ func (rp *WorkspaceService) restartWatcher() {
 		}
 	}()
 	log.Println("restarted watcher")
+}
+
+func (rp *WorkspaceService) SetPreviewMode(mode string) {
+	if rp.currentWorkspace.Path == "" {
+		return
+	}
+
+	existing := rp.LoadWorkspaceSettings()
+
+	rp.mu.Lock()
+	defer rp.mu.Unlock()
+
+	existing.PreviewMode = mode
+	rp.saveWorkspaceSetting(existing)
 }
 
 func openDB(dbFile string) *bolt.DB {

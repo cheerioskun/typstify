@@ -89,7 +89,6 @@ func (tn *FileTreeNav) switchRoot() {
 
 	tn.srv.SetProjectDir(newRoot)
 	tn.title = filepath.Base(newRoot)
-	tn.srv.Workspace().AddRecent(newRoot)
 
 	// Restore the workplace.
 	states := tn.srv.Workspace().Current().TreeState

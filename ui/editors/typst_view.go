@@ -17,7 +17,6 @@ import (
 	"github.com/oligo/gvcode"
 	"looz.ws/typstify/editor"
 	"looz.ws/typstify/lsp"
-	"looz.ws/typstify/preview"
 	"looz.ws/typstify/service"
 	"looz.ws/typstify/ui/dialog"
 	uipreview "looz.ws/typstify/ui/preview"
@@ -43,13 +42,12 @@ var (
 
 type TypstEditor struct {
 	*view.BaseView
-	srv           *service.ServiceFacade
-	previewClient *preview.PreviewClient
-	srcEditor     *editor.TextEditor
-	targetFile    string // the main file
-	currentFile   string // switched temp file
-	breadcrums    *fileBreadcrums
-	lspReady      bool
+	srv         *service.ServiceFacade
+	srcEditor   *editor.TextEditor
+	targetFile  string // the main file
+	currentFile string // switched temp file
+	breadcrums  *fileBreadcrums
+	lspReady    bool
 
 	// Preview
 	uiPreviewer    *uipreview.Previewer
@@ -91,11 +89,6 @@ func (te *TypstEditor) OnNavTo(intent view.Intent) error {
 	te.breadcrums = newBreadcrums(rootDir, te.targetFile, te.onSelectFile)
 	te.lspReady = false
 
-	client := lsp.GetLspClient(rootDir, te.srv.Settings())
-	if client != nil {
-		te.previewClient = preview.NewPreviwClient(client, te.targetFile)
-	}
-
 	return nil
 }
 
@@ -108,8 +101,9 @@ func (te *TypstEditor) setupEditor(path string, createOnMissing bool, readonly b
 	te.srcEditor = srcEditor
 
 	te.srcEditor.OnSelectChange = func(p gvcode.Position) {
-		if te.previewClient != nil {
-			te.previewClient.ScrollOnSelectionChange(context.Background(), p)
+		previewSrv := te.srv.PreviewService()
+		if previewSrv != nil {
+			previewSrv.ScrollOnSelectionChange(context.Background(), p)
 		}
 	}
 	te.srcEditor.OnOpenLink = te.openLink
@@ -146,61 +140,38 @@ func (te *TypstEditor) onSelectFile(path string) {
 	log.Println("open editor: ", path)
 }
 
-// func (te *TypstEditor) IsReadOnly() bool {
-// 	return te.srcEditor.state.Mode() == gvcode.ModeReadOnly
-// }
-
 func (te *TypstEditor) Actions() []view.ViewAction {
 	return []view.ViewAction{
 		{
 			Name: "Preview",
 			Icon: previewIcon,
 			OnClicked: func(gtx C) {
-				te.previewVisible = !te.previewVisible
+				previewSrv := te.srv.PreviewService()
+				if previewSrv == nil {
+					return
+				}
 
-				if te.previewClient == nil {
+				serverAddr := previewSrv.Address()
+				if serverAddr == "" {
+					log.Println("preview ERR: no preview server address")
 					return
 				}
 
 				openInBrowser := te.srv.Settings().General().OpenPreviewInBrowser != 0
-				if !te.previewVisible {
-					te.previewClient.Close(context.Background())
+				var isLinux = runtime.GOOS == "linux"
+				if (openInBrowser || isLinux) && serverAddr != "" {
+					utils.OpenInExternalApp(serverAddr)
+					te.previewVisible = false
+					return
+				}
 
-					// Close existing preview webview if switching to browser mode
+				// built-in previewer
+				te.previewVisible = !te.previewVisible
+
+				if !te.previewVisible {
 					if te.uiPreviewer != nil {
 						te.uiPreviewer.CancelPopup()
-						//te.uiPreviewer.Destroy()
-						//te.uiPreviewer = nil
 					}
-					return
-				}
-
-				// create new
-				serverAddr, err := te.previewClient.New(context.Background(),
-					preview.PreviewOptions{
-						PreviewMode:      "document",
-						ProjectRoot:      te.srv.CurrentProjectDir(),
-						FontPath:         te.srv.CurrentProjectDir(),
-						PackagePath:      te.srv.Settings().Typst().PackageDir,
-						PackageCachePath: te.srv.Settings().Typst().PackageCacheDir,
-						InvertColor:      "never",
-						PartialRender:    false,
-						OpenInBrowser:    openInBrowser,
-					})
-
-				if err != nil {
-					log.Println("preview ERR: ", err)
-					return
-				}
-
-				// If OpenInBrowser is true, the LSP handles opening the browser
-				if openInBrowser {
-					return
-				}
-
-				var isLinux = runtime.GOOS == "linux"
-				if isLinux && serverAddr != "" {
-					utils.OpenInExternalApp(serverAddr)
 					return
 				}
 
@@ -288,10 +259,6 @@ func (te *TypstEditor) OnFinish() {
 	te.BaseView.OnFinish()
 	if te.srcEditor != nil {
 		te.srcEditor.Close()
-	}
-
-	if te.previewClient != nil {
-		te.previewClient.Destroy(context.Background())
 	}
 
 	if te.uiPreviewer != nil {

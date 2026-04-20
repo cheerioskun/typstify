@@ -33,6 +33,7 @@ type Client struct {
 
 	jsonConn        *jsonrpc2.Connection
 	connReady       atomic.Bool
+	lspInitialized  atomic.Bool
 	lspCapabilities *protocol.ServerCapabilities
 
 	docCache *documentCache
@@ -174,6 +175,8 @@ func (c *Client) connectServer(ctx context.Context, initOpts map[string]any) err
 		return nil
 	}
 
+	c.lspInitialized.Store(false)
+
 	jsonConn, err := c.server.Connect(c)
 	if err != nil {
 		return err
@@ -265,11 +268,12 @@ func (c *Client) connectServer(ctx context.Context, initOpts map[string]any) err
 		return errors.Wrapf(err, "failed to send initialized notification to LSP server")
 	}
 
+	c.lspInitialized.Store(true)
 	return nil
 }
 
-func (c *Client) isReady() bool {
-	return c.connReady.Load()
+func (c *Client) IsReady() bool {
+	return c.connReady.Load() && c.lspInitialized.Load()
 }
 
 func (c *Client) CloseConn() {
@@ -354,7 +358,7 @@ func (c *Client) Handle(ctx context.Context, req *jsonrpc2.Request) (interface{}
 // OnEditorUpdated should be called when editor loads a file, or content changed, or when the editor closed.
 func (c *Client) OnEditorUpdated(filePath string, state *gvcode.Editor) {
 	c.docCache.Update(filePath, state.GetReader())
-	if !c.connReady.Load() {
+	if !c.IsReady() {
 		return
 	}
 
@@ -370,7 +374,7 @@ func (c *Client) OnEditorUpdated(filePath string, state *gvcode.Editor) {
 func (c *Client) OnEditorClosed(filePath string) {
 	c.docCache.Remove(filePath)
 	//TODO: if connection is not ready, the closing notification may never fire.
-	if c.connReady.Load() {
+	if c.IsReady() {
 		ctx, cancel := context.WithTimeout(context.Background(), CommunicationTimeout)
 		defer cancel()
 		c.notifyDidOpenOrChange(ctx, filePath)
@@ -378,7 +382,7 @@ func (c *Client) OnEditorClosed(filePath string) {
 }
 
 func (c *Client) OnEditorSaved(filePath string) {
-	if !c.connReady.Load() {
+	if !c.IsReady() {
 		return
 	}
 
@@ -481,7 +485,7 @@ func (c *Client) Complete(ctx context.Context, filePath string, line, col int) (
 	defer cancel()
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if !c.isReady() {
+	if !c.IsReady() {
 		return nil, errors.New("client is not connected")
 	}
 
@@ -521,7 +525,7 @@ func (c *Client) Hover(ctx context.Context, filePath string, line, col int) (*Ho
 	defer cancel()
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if !c.isReady() {
+	if !c.IsReady() {
 		return nil, errors.New("client is not connected")
 	}
 
@@ -582,7 +586,7 @@ func (c *Client) PullDiagnostics(ctx context.Context, filePath string) error {
 }
 
 func (c *Client) ExecuteCommand(ctx context.Context, cmd string, args []any) (any, error) {
-	if !c.connReady.Load() {
+	if !c.IsReady() {
 		return nil, errors.New("LSP is not ready")
 	}
 
@@ -612,6 +616,26 @@ func (c *Client) ExecuteCommand(ctx context.Context, cmd string, args []any) (an
 	}
 
 	return result, nil
+}
+
+func (c *Client) NotifyWorkspaceConfigChanges(ctx context.Context, settings map[string]any) error {
+	if !c.IsReady() {
+		return errors.New("LSP is not ready")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), CommunicationTimeout)
+	defer cancel()
+
+	err := c.jsonConn.Notify(ctx, protocol.RPCMethodDidChangeConfiguration,
+		protocol.DidChangeConfigurationParams{
+			Settings: settings,
+		})
+
+	if err != nil {
+		return errors.Wrapf(err, "failed to update workspace settings")
+	}
+
+	return nil
 }
 
 func (c *Client) SetServreLogStreamer(dest io.Writer) {

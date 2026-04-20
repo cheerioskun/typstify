@@ -28,6 +28,7 @@ type ServiceFacade struct {
 	workspaceSrv       *WorkspaceService
 	pkgService         *pkg.TypstPkgService
 	windowSrv          *WindowService
+	previewSrv         *lsp.PreviewService
 	fileChooserBuilder func() *explorer.FileChooser
 	consoleState       *console.ConsoleState
 
@@ -110,6 +111,9 @@ func (s *ServiceFacade) Close(ctx context.Context) {
 	s.windowSrv.Shutdown()
 	s.windowSrv.Wait()
 	lsp.StopLsp()
+	if s.previewSrv != nil {
+		s.previewSrv.Destroy(ctx)
+	}
 	log.Println("service down")
 }
 
@@ -167,7 +171,13 @@ func (s *ServiceFacade) CheckUpdate() *net.ReleaseInfo {
 }
 
 func (s *ServiceFacade) SetProjectDir(dir string) {
+	if dir == "" {
+		return
+	}
+
 	s.currentProjectDir = dir
+
+	s.Workspace().AddRecent(s.currentProjectDir)
 
 	// init executable lookup path.
 	lsp.SetupCmdBuilder(s.settings.General().ExternalTinymist)
@@ -180,6 +190,46 @@ func (s *ServiceFacade) SetProjectDir(dir string) {
 	} else {
 		client.SetServreLogStreamer(io.Discard)
 	}
+
+	previewMode := lsp.PreviewMode(s.Workspace().LoadWorkspaceSettings().PreviewMode)
+	if previewMode == "" {
+		previewMode = lsp.DocumentPreviewMode
+	}
+
+	s.previewSrv = lsp.NewPreviwService(client)
+	go func() {
+		s.previewSrv.Start(context.Background(),
+			lsp.PreviewOptions{
+				Mode:          previewMode,
+				InvertColor:   "never",
+				PartialRender: false,
+			})
+	}()
+}
+
+func (s *ServiceFacade) RestartPreview(ctx context.Context) {
+	if s.previewSrv == nil {
+		return
+	}
+
+	previewMode := lsp.PreviewMode(s.Workspace().LoadWorkspaceSettings().PreviewMode)
+	if previewMode == "" {
+		previewMode = lsp.DocumentPreviewMode
+	}
+
+	go func() {
+		s.previewSrv.Start(context.Background(),
+			lsp.PreviewOptions{
+				Mode:          previewMode,
+				ProjectRoot:   s.currentProjectDir,
+				InvertColor:   "never",
+				PartialRender: false,
+			})
+	}()
+}
+
+func (s *ServiceFacade) PreviewService() *lsp.PreviewService {
+	return s.previewSrv
 }
 
 func (s *ServiceFacade) CurrentProjectDir() string {

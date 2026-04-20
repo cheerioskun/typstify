@@ -105,9 +105,9 @@ func (s *Settings) Tpix() *TpixSettings {
 
 func (s *Settings) initModel(name string) baseModel {
 	bkt := utils.NewBucket[utils.SKey](name, s.db, &utils.BinaryEncoder[any]{})
-	return baseModel{bucket: bkt, onSave: func() {
+	return baseModel{bucket: bkt, onSave: func(model Model) {
 		if s.eventbus != nil {
-			s.eventbus.Emit(bus.TopicSettingsUpdated, nil)
+			s.eventbus.Emit(bus.TopicSettingsUpdated, model)
 		}
 	}}
 }

@@ -11,7 +11,7 @@ type baseModel struct {
 	// isDirty bool
 	loaded bool
 	bucket *utils.Bucket[utils.SKey, any]
-	onSave func()
+	onSave func(model Model)
 }
 
 func (m *baseModel) save(model Model) error {
@@ -43,7 +43,7 @@ func (m *baseModel) save(model Model) error {
 
 	// m.isDirty = false
 	if m.onSave != nil {
-		m.onSave()
+		m.onSave(model)
 	}
 
 	return nil

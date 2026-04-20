@@ -18,6 +18,7 @@ var (
 	_ Model = (*GeneralSettings)(nil)
 	_ Model = (*EditorSettings)(nil)
 	_ Model = (*TypstSettings)(nil)
+	_ Model = (*TpixSettings)(nil)
 )
 
 var (

@@ -136,6 +136,9 @@ var PanelLeftClose []byte
 //go:embed lucide/panel-right-close.svg
 var PanelRightClose []byte
 
+//go:embed lucide/presentation.svg
+var Presentation []byte
+
 func newIcon(iconData []byte) *giosvg.Icon {
 	vector, err := giosvg.NewVector(iconData)
 	if err != nil {

@@ -223,7 +223,6 @@ func (d *CreateProjectDialog) LayoutBody(gtx C, th *theme.Theme) D {
 						d.projectDirInput.Alignment = text.Start
 						d.projectDirInput.SingleLine = true
 						d.projectDirInput.State().ReadOnly = true
-						d.projectDirInput.LabelOption.Alignment = gw.Hidden
 						d.projectDirInput.Leading = func(gtx layout.Context) layout.Dimensions {
 							return folderOpenIcon.Layout(gtx, th.ContrastBg, th.TextSize*1.2)
 						}

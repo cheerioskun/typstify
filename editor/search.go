@@ -354,7 +354,6 @@ func (sb *TextSearchBar) layoutSearchBar(gtx C, th *theme.Theme) D {
 				}.Layout(gtx, func(gtx C) D {
 					gtx.Constraints.Max.X = gtx.Dp(inputBarWidth)
 					sb.searchInput.SingleLine = true
-					sb.searchInput.LabelOption = gw.LabelOption{Alignment: gw.Hidden}
 					sb.searchInput.Padding = unit.Dp(6)
 					// sb.searchInput.Leading = func(gtx C) D {
 					// 	return misc.Icon{Icon: RegexIcon, Size: unit.Dp(18), Color: misc.WithAlpha(th.Fg, 0xb0)}.Layout(gtx, th)
@@ -435,7 +434,6 @@ func (sb *TextSearchBar) layoutReplaceBar(gtx C, th *theme.Theme) D {
 				}.Layout(gtx, func(gtx C) D {
 					gtx.Constraints.Max.X = gtx.Dp(unit.Dp(200))
 					sb.replaceInput.SingleLine = true
-					sb.replaceInput.LabelOption = gw.LabelOption{Alignment: gw.Hidden}
 					sb.replaceInput.Padding = unit.Dp(6)
 					return sb.replaceInput.Layout(gtx, th, "Replace")
 				})

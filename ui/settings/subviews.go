@@ -122,7 +122,6 @@ func (item settingItem) Layout(gtx C, th *theme.Theme, title, labelDesc string, 
 
 func (g *GeneralView) Layout(gtx C, th *theme.Theme) D {
 	g.typeface.SingleLine = true
-	g.typeface.LabelOption.Alignment = gvwidget.Hidden
 
 	if !g.isInitialized {
 		g.externalTypstInput.SetText(g.setting.ExternalTypst)
@@ -387,9 +386,7 @@ func currentTabKind(s *settings.EditorSettings) string {
 
 func (e *EditorView) Layout(gtx C, th *theme.Theme) D {
 	e.typeface.SingleLine = true
-	e.typeface.LabelOption.Alignment = gvwidget.Hidden
 	e.tabSize.SingleLine = true
-	e.tabSize.LabelOption.Alignment = gvwidget.Hidden
 
 	if !e.isInitialized {
 		e.textSizeInput = form.NewFloatBinder(float32(e.setting.TextSize), []float32{6, 36})

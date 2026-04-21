@@ -6,8 +6,6 @@ import (
 	"log"
 	"sync"
 	"time"
-
-	"github.com/oligo/gvcode"
 )
 
 type PreviewMode string
@@ -50,7 +48,7 @@ func NewPreviwService(client *Client) *PreviewService {
 // Start starts a new preview server by calling a Tinymist LSP command.
 // The server use a randomly selected port. If there is already one active
 // task, it stops it first.
-func (p *PreviewService) Start(ctx context.Context, opts PreviewOptions) error {
+func (p *PreviewService) Start(ctx context.Context, opts PreviewOptions, onFinish func()) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
@@ -68,9 +66,13 @@ func (p *PreviewService) Start(ctx context.Context, opts PreviewOptions) error {
 	defer cancel()
 
 	// Kill existing preveiw first.
-	p.killLspPreview(ctx)
+	err := p.killLspPreview(ctx)
+	if err != nil {
+		return err
+	}
+
 	// Update tinymist.startDefaultPreview configs via workspace/didChangeConfiguration notification.
-	err := p.updatePreview(ctx, opts)
+	err = p.updatePreview(ctx, opts)
 	if err != nil {
 		return err
 	}
@@ -86,6 +88,9 @@ func (p *PreviewService) Start(ctx context.Context, opts PreviewOptions) error {
 		serverAddr: fmt.Sprintf("http://127.0.0.1:%d", previewServerPort),
 	}
 	p.task = task
+	if onFinish != nil {
+		onFinish()
+	}
 	return nil
 }
 
@@ -147,8 +152,6 @@ func (p *PreviewService) startPreview(ctx context.Context) (int, error) {
 		panic("invalid cmd response type")
 	}
 
-	log.Println("preview response: ", cmdResp)
-
 	previewServerPort := cmdResp["staticServerPort"].(float64)
 
 	return int(previewServerPort), nil
@@ -159,7 +162,11 @@ func (p *PreviewService) killLspPreview(ctx context.Context) error {
 		return nil
 	}
 
-	_, err := p.client.ExecuteCommand(ctx, "tinymist.doKillPreview", []any{}) // kill all previews.
+	// tinymist.doKillPreview has a bug in its argument handling.
+	// By design it accepts empty args which indicates killing all previews. But this 
+	// does not work, so we have to pass a task id here. The primary preview server has 
+	// the default task id 'default_preview'.
+	_, err := p.client.ExecuteCommand(ctx, "tinymist.doKillPreview", []any{"default_preview"})
 	if err != nil {
 		log.Printf("kill preview failed: %v", err)
 		return err
@@ -181,7 +188,7 @@ func (p *PreviewService) scollLspPreview(ctx context.Context) error {
 	return nil
 }
 
-func (p *PreviewService) ScrollOnSelectionChange(ctx context.Context, pos gvcode.Position) {
+func (p *PreviewService) ScrollOnSelectionChange(ctx context.Context) {
 	if p.task == nil {
 		return
 	}

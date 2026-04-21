@@ -145,7 +145,6 @@ func (vw *PkgListView) Layout(gtx C, th *theme.Theme) D {
 					layout.Rigid(func(gtx C) D {
 						return layout.Inset{}.Layout(gtx, func(gtx C) D {
 							vw.searchInput.SingleLine = true
-							vw.searchInput.LabelOption = gvwidget.LabelOption{Alignment: gvwidget.Hidden}
 							// vw.searchInput.MaxChars = 64
 							vw.searchInput.Padding = unit.Dp(8)
 							vw.searchInput.Leading = func(gtx C) D {

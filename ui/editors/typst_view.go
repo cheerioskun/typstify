@@ -22,6 +22,7 @@ import (
 	uipreview "looz.ws/typstify/ui/preview"
 	"looz.ws/typstify/ui/viewer"
 	"looz.ws/typstify/utils"
+	appIcons "looz.ws/typstify/widgets/icons"
 
 	"gioui.org/layout"
 	"gioui.org/unit"
@@ -38,6 +39,7 @@ var (
 	TypstEditorViewID = view.NewViewID("TypstEditor")
 	previewIcon, _    = widget.NewIcon(icons.ActionPageview)
 	exportIcon, _     = widget.NewIcon(icons.CommunicationImportExport)
+	presentationIcon  = appIcons.NewSvgIcon(appIcons.Presentation)
 )
 
 type TypstEditor struct {
@@ -52,6 +54,7 @@ type TypstEditor struct {
 	// Preview
 	uiPreviewer    *uipreview.Previewer
 	previewVisible bool
+	toggleModeBtn  widget.Clickable
 }
 
 func (te *TypstEditor) ID() view.ViewID {
@@ -103,7 +106,7 @@ func (te *TypstEditor) setupEditor(path string, createOnMissing bool, readonly b
 	te.srcEditor.OnSelectChange = func(p gvcode.Position) {
 		previewSrv := te.srv.PreviewService()
 		if previewSrv != nil {
-			previewSrv.ScrollOnSelectionChange(context.Background(), p)
+			previewSrv.ScrollOnSelectionChange(context.Background())
 		}
 	}
 	te.srcEditor.OnOpenLink = te.openLink
@@ -169,18 +172,11 @@ func (te *TypstEditor) Actions() []view.ViewAction {
 				te.previewVisible = !te.previewVisible
 
 				if !te.previewVisible {
-					if te.uiPreviewer != nil {
-						te.uiPreviewer.CancelPopup()
-					}
 					return
 				}
 
-				if serverAddr != "" {
-					if te.uiPreviewer == nil {
-						te.uiPreviewer = uipreview.NewPreviewer(te.targetFile, te.srv)
-					}
-					te.uiPreviewer.Navigate(serverAddr)
-					// te.uiPreviewer.Popup()
+				if serverAddr != "" && te.uiPreviewer != nil {
+					te.uiPreviewer.Restart()
 				}
 
 			},
@@ -233,16 +229,13 @@ func (te *TypstEditor) Layout(gtx layout.Context, th *theme.Theme) layout.Dimens
 	})
 }
 
-// IsPreviewVisible returns whether the inline preview panel should be shown.
-func (te *TypstEditor) IsVisible() bool {
-	return te.previewVisible && te.uiPreviewer != nil
+func (te *TypstEditor) SetPreviewer(previewer *uipreview.Previewer) {
+	te.uiPreviewer = previewer
 }
 
-// HidePreview hides the native webview so it stops intercepting keyboard events.
-func (te *TypstEditor) HidePreview(gtx C) {
-	if te.uiPreviewer != nil {
-		te.uiPreviewer.HideWebView(gtx)
-	}
+// IsPreviewVisible returns whether the inline preview panel should be shown.
+func (te *TypstEditor) IsVisible() bool {
+	return te.previewVisible
 }
 
 // LayoutPreview renders the preview panel. Called by home.go when preview is active.
@@ -252,17 +245,39 @@ func (te *TypstEditor) LayoutPreview(gtx C, th *theme.Theme) D {
 
 // Implements StatusIndicator to let statusbar render it.
 func (te *TypstEditor) LayoutStatus(gtx C, th *theme.Theme) D {
-	return te.srcEditor.LayoutStatus(gtx, th, te.srv)
+	if !te.previewVisible {
+		return te.srcEditor.LayoutStatus(gtx, th, te.srv)
+	}
+
+	return layout.Flex{
+		Axis:      layout.Horizontal,
+		Alignment: layout.Middle,
+	}.Layout(gtx,
+		layout.Rigid(func(gtx C) D {
+			return te.srcEditor.LayoutStatus(gtx, th, te.srv)
+		}),
+		layout.Rigid(layout.Spacer{Width: unit.Dp(12)}.Layout),
+		layout.Rigid(func(gtx C) D {
+			if te.toggleModeBtn.Clicked(gtx) {
+				te.uiPreviewer.ToggleMode()
+			}
+
+			iconColor := utils.DisableColor(th.Fg)
+			if te.uiPreviewer.Mode() == lsp.SlidePreviewMode {
+				iconColor = th.ContrastBg
+			}
+
+			return te.toggleModeBtn.Layout(gtx, func(gtx C) D {
+				return presentationIcon.Layout(gtx, iconColor, th.TextSize)
+			})
+		}),
+	)
 }
 
 func (te *TypstEditor) OnFinish() {
 	te.BaseView.OnFinish()
 	if te.srcEditor != nil {
 		te.srcEditor.Close()
-	}
-
-	if te.uiPreviewer != nil {
-		te.uiPreviewer.Destroy()
 	}
 }
 

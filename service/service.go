@@ -203,11 +203,11 @@ func (s *ServiceFacade) SetProjectDir(dir string) {
 				Mode:          previewMode,
 				InvertColor:   "never",
 				PartialRender: false,
-			})
+			}, nil)
 	}()
 }
 
-func (s *ServiceFacade) RestartPreview(ctx context.Context) {
+func (s *ServiceFacade) RestartPreview(ctx context.Context, onFinish func()) {
 	if s.previewSrv == nil {
 		return
 	}
@@ -224,7 +224,7 @@ func (s *ServiceFacade) RestartPreview(ctx context.Context) {
 				ProjectRoot:   s.currentProjectDir,
 				InvertColor:   "never",
 				PartialRender: false,
-			})
+			}, onFinish)
 	}()
 }
 

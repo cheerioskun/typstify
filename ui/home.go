@@ -6,6 +6,7 @@ import (
 	"looz.ws/typstify/service"
 	"looz.ws/typstify/ui/console"
 	"looz.ws/typstify/ui/navpanel"
+	"looz.ws/typstify/ui/preview"
 	"looz.ws/typstify/ui/statusbar"
 	"looz.ws/typstify/widgets"
 
@@ -22,8 +23,8 @@ import (
 // previewable is implemented by views that support an inline preview panel.
 type previewable interface {
 	IsVisible() bool
+	SetPreviewer(previewer *preview.Previewer)
 	LayoutPreview(gtx C, th *theme.Theme) D
-	HidePreview(gtx C)
 }
 
 type HomeView struct {
@@ -49,7 +50,8 @@ type HomeView struct {
 	// preview resizer (view | preview split)
 	previewResizer    *widgets.Resize
 	previewBar        *widgets.ResizeBar
-	activePreviewView view.View // tracks which view has an active preview webview
+	activePreviewView previewable // tracks which view has an active preview webview
+	previewer         *preview.Previewer
 
 	welcome WelcomeView
 }
@@ -268,36 +270,19 @@ func (hv *HomeView) layoutMain(gtx C, th *theme.Theme) D {
 }
 
 func (hv *HomeView) layoutView(gtx C, th *theme.Theme) D {
-	// cv := hv.CurrentView()
-	// if cv == nil {
-	// 	return hv.welcome.Layout(gtx, th)
-	// }
-
-	// return cv.Layout(gtx, th)
-
 	cv := hv.CurrentView()
-
-	// If the view that owned the active preview changed or its preview is no
-	// longer visible, hide the native webview so it stops stealing input.
-	if hv.activePreviewView != nil {
-		if pv, ok := hv.activePreviewView.(previewable); ok {
-			if cv != hv.activePreviewView || !pv.IsVisible() {
-				pv.HidePreview(gtx)
-				hv.activePreviewView = nil
-			}
-		}
-	}
-
 	if cv == nil {
 		return hv.welcome.Layout(gtx, th)
 	}
 
 	pv, ok := cv.(previewable)
+	if ok {
+		pv.SetPreviewer(hv.previewer)
+	}
+
 	if !ok || !pv.IsVisible() {
 		return cv.Layout(gtx, th)
 	}
-
-	hv.activePreviewView = cv
 
 	// Initialize preview resizer on first use.
 	if hv.previewResizer == nil {
@@ -322,6 +307,9 @@ func (hv *HomeView) layoutView(gtx C, th *theme.Theme) D {
 
 func (hv *HomeView) OnClose() {
 	hv.sidebar.FileExplorer.OnClose()
+	if hv.previewer != nil {
+		hv.previewer.Destroy()
+	}
 }
 
 func newHome(window *app.Window, srv *service.ServiceFacade) *HomeView {
@@ -330,7 +318,7 @@ func newHome(window *app.Window, srv *service.ServiceFacade) *HomeView {
 	return &HomeView{
 		ViewManager:  vm,
 		srv:          srv,
-		tabbar:       navpanel.NewTabbar(vm, &navpanel.TabbarOptions{MaxVisibleActions: 3}),
+		tabbar:       navpanel.NewTabbar(vm, nil),
 		sidebar:      navpanel.NewNavDrawer(vm, srv),
 		statusBar:    statusbar.NewStatusBar(srv, vm),
 		consolePanel: console.NewConsolePanel(srv.Console()),
@@ -338,5 +326,6 @@ func newHome(window *app.Window, srv *service.ServiceFacade) *HomeView {
 		yresizer:     &widgets.Resize{Axis: layout.Vertical, Ratio: 1.0},
 		lastYRatio:   0.7,
 		welcome:      WelcomeView{vm: vm, srv: srv},
+		previewer:    preview.NewPreviewer(srv),
 	}
 }

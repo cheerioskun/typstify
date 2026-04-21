@@ -34,9 +34,8 @@ const (
 )
 
 type TabbarOptions struct {
-	MaxTabWidth       unit.Dp
-	Height            unit.Dp
-	MaxVisibleActions int
+	MaxTabWidth unit.Dp
+	Height      unit.Dp
 }
 
 type Tabbar struct {
@@ -68,7 +67,7 @@ func (tb *Tabbar) Layout(gtx C, th *theme.Theme) D {
 			tb.tabs = tb.tabs[:0]
 		}
 		for _, v := range tabViews {
-			tb.tabs = append(tb.tabs, newTab(v, tb.options.MaxVisibleActions))
+			tb.tabs = append(tb.tabs, newTab(v))
 		}
 	}
 
@@ -90,7 +89,7 @@ func (tb *Tabbar) Layout(gtx C, th *theme.Theme) D {
 		if tab.IsSelected() {
 			currentTab = tab
 			// The top most view in the stack may have changed, rebind to it if necessary.
-			currentTab.bindToView(v, tb.options.MaxVisibleActions)
+			currentTab.bindToView(v)
 		}
 	}
 
@@ -103,26 +102,7 @@ func (tb *Tabbar) Layout(gtx C, th *theme.Theme) D {
 	rect := clip.Rect(image.Rectangle{Max: gtx.Constraints.Max})
 	paint.FillShape(gtx.Ops, th.Bg, rect.Op())
 
-	return layout.Flex{
-		Axis: layout.Vertical,
-	}.Layout(gtx,
-		layout.Rigid(func(gtx C) D {
-			return layout.Flex{
-				Axis:      layout.Horizontal,
-				Alignment: layout.Middle,
-			}.Layout(gtx,
-				layout.Flexed(0.8, func(gtx C) D {
-					return tb.layoutTabs(gtx, th)
-				}),
-
-				layout.Flexed(0.2, func(gtx C) D {
-					return layout.E.Layout(gtx, func(gtx C) D {
-						return tb.layoutActions(gtx, th, currentTab)
-					})
-				}),
-			)
-		}),
-	)
+	return tb.layoutTabs(gtx, th)
 
 }
 
@@ -133,11 +113,6 @@ func (tb *Tabbar) layoutTabs(gtx C, th *theme.Theme) D {
 		tb.tabWidth = min(gtx.Constraints.Max.X/len(tb.tabs), tb.tabWidth)
 	}
 
-	// FIXME: As pointed out in this todo, layout.List does not scroll when laid out horizontally:
-	// https://todo.sr.ht/~eliasnaur/gio/530
-	// UPDATE: As https://todo.sr.ht/~eliasnaur/gio/398 and https://git.sr.ht/~eliasnaur/gio/commit/febadd3 pointed out,
-	// You can scoll horizontally using a wheel with the shift key pressed.
-	// But scroll without pressing a shift key would be better.
 	return tb.list.Layout(gtx, len(tb.tabs), func(gtx C, index int) D {
 		//gtx.Constraints.Min.X = tb.tabWidth
 
@@ -161,16 +136,6 @@ func (tb *Tabbar) layoutTabs(gtx C, th *theme.Theme) D {
 
 }
 
-func (tb *Tabbar) layoutActions(gtx C, th *theme.Theme, tab *Tab) D {
-	if tab == nil || len(tab.vw.Actions()) <= 0 {
-		return layout.Dimensions{}
-	}
-
-	return layout.Inset{Right: unit.Dp(10)}.Layout(gtx, func(gtx C) D {
-		return tab.actionBar.Layout(gtx, th)
-	})
-}
-
 func NewTabbar(vm view.ViewManager, options *TabbarOptions) *Tabbar {
 	tb := &Tabbar{
 		vm:      vm,
@@ -182,17 +147,14 @@ func NewTabbar(vm view.ViewManager, options *TabbarOptions) *Tabbar {
 
 	if options == nil {
 		tb.options = &TabbarOptions{
-			Height:            unit.Dp(28),
-			MaxTabWidth:       unit.Dp(150),
-			MaxVisibleActions: 999, // unlimited visible actions
+			Height:      unit.Dp(28),
+			MaxTabWidth: unit.Dp(150),
 		}
 	}
 	if tb.options.Height == 0 {
 		tb.options.Height = unit.Dp(28)
 	}
-	if tb.options.MaxVisibleActions < 0 {
-		tb.options.MaxVisibleActions = 0
-	}
+
 	if tb.options.MaxTabWidth <= 0 {
 		tb.options.MaxTabWidth = unit.Dp(150)
 	}
@@ -200,20 +162,18 @@ func NewTabbar(vm view.ViewManager, options *TabbarOptions) *Tabbar {
 	return tb
 }
 
-func newTab(vw view.View, maxVisibleActions int) *Tab {
+func newTab(vw view.View) *Tab {
 	tab := &Tab{}
-	tab.bindToView(vw, maxVisibleActions)
+	tab.bindToView(vw)
 	return tab
 }
 
-func (tab *Tab) bindToView(vw view.View, maxVisibleActions int) {
+func (tab *Tab) bindToView(vw view.View) {
 	if tab.vw == vw {
 		return
 	}
 
 	tab.vw = vw
-	tab.actionBar = &navi.ActionBar{}
-	tab.actionBar.SetActions(vw.Actions(), maxVisibleActions)
 }
 
 func (tab *Tab) IsSelected() bool {

@@ -27,6 +27,8 @@ func NewWebView() *WebView {
 
 func (wv *WebView) Navigate(url string) {
 	wv.currentURL = url
+	wv.initialized = false
+	wv.once = sync.Once{}
 }
 
 func (wv *WebView) initialize(gtx layout.Context) {

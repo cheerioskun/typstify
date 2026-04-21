@@ -1,6 +1,6 @@
 module looz.ws/typstify
 
-go 1.25.4
+go 1.25.5
 
 require (
 	gioui.org v0.9.1-0.20251215212054-7bcb315ee174
@@ -16,7 +16,7 @@ require (
 	github.com/inkeliz/giohyperlink v0.0.0-20220903215451-2ac5d54abdce
 	github.com/inkeliz/giosvg v0.0.0-20240821232107-3208d4350d55
 	github.com/mustafaturan/bus/v3 v3.0.3
-	github.com/oligo/gioview v0.8.7
+	github.com/oligo/gioview v0.9.0
 	github.com/oligo/gvcode v0.6.1
 	github.com/pkg/errors v0.8.1
 	github.com/rivo/uniseg v0.4.7

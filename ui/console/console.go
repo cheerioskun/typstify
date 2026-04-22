@@ -1,9 +1,9 @@
 package console
 
 import (
-	"bytes"
 	"io"
 	"regexp"
+	"strings"
 	"sync"
 	"sync/atomic"
 
@@ -38,7 +38,8 @@ var (
 var _ io.Writer = (*ConsoleState)(nil)
 
 type ConsoleState struct {
-	buf         bytes.Buffer
+	lines       []string
+	partialLine string
 	state       *gvcode.Editor
 	colorScheme syntax.ColorScheme
 	yScroll     widget.Scrollbar
@@ -73,10 +74,11 @@ func (c *ConsoleState) Write(data []byte) (int, error) {
 
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	n, err := c.buf.Write(data)
+	msg := Strip(string(data))
+	c.appendText(msg)
 	c.textUpated.Store(true)
 
-	return n, err
+	return len(data), nil
 }
 
 func (c *ConsoleState) HasMore() bool {
@@ -86,15 +88,17 @@ func (c *ConsoleState) HasMore() bool {
 func (c *ConsoleState) Clear() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	c.lines = c.lines[:0]
+	c.partialLine = ""
 	c.state.SetText("")
 }
 
 func (c *ConsoleState) readBuffered() {
 	c.mu.Lock()
-	msg := c.buf.String()
-	c.state.SetCaret(c.state.Len(), c.state.Len())
-	c.state.Insert(msg)
-	c.buf.Reset()
+	text := c.visibleText()
+	c.state.SetText(text)
+	textLen := c.state.Len()
+	c.state.SetCaret(textLen, textLen)
 	c.mu.Unlock()
 }
 
@@ -163,25 +167,77 @@ func (c *ConsoleState) update(gtx C, th *theme.Theme) {
 
 }
 
+// truncate keeps only the newest maxLines of completed/visible console output.
+// It runs after new text is appended, so older lines are dropped as soon as the
+// buffered line store grows past the configured cap.
 func (c *ConsoleState) truncate() {
-	if c.state.Lines() <= c.maxLines {
+	if c.maxLines <= 0 {
+		c.lines = c.lines[:0]
+		c.partialLine = ""
 		return
 	}
 
-	overflows := c.state.Lines() - c.maxLines
-	c.state.SetCaret(0, 0)
-	c.state.SelectLines(overflows, false)
-	c.state.Delete(1)
+	lineCount := len(c.lines)
+	if c.partialLine != "" {
+		lineCount++
+	}
+	if lineCount <= c.maxLines {
+		return
+	}
 
-	textLen := c.state.Len()
-	c.state.SetCaret(textLen, textLen)
+	overflow := lineCount - c.maxLines
+	if overflow >= len(c.lines) {
+		c.lines = c.lines[:0]
+		return
+	}
+
+	c.lines = append(c.lines[:0], c.lines[overflow:]...)
 }
 
-// ANSI escape sequence regexp
+func (c *ConsoleState) appendText(msg string) {
+	if msg == "" {
+		return
+	}
+
+	combined := c.partialLine + msg
+	c.partialLine = ""
+
+	parts := strings.SplitAfter(combined, "\n")
+	if !strings.HasSuffix(combined, "\n") {
+		c.partialLine = parts[len(parts)-1]
+		parts = parts[:len(parts)-1]
+	}
+
+	c.lines = append(c.lines, parts...)
+	c.truncate()
+}
+
+func (c *ConsoleState) visibleText() string {
+	var b strings.Builder
+	total := 0
+	for _, line := range c.lines {
+		total += len(line)
+	}
+	total += len(c.partialLine)
+	b.Grow(total)
+
+	for _, line := range c.lines {
+		b.WriteString(line)
+	}
+	b.WriteString(c.partialLine)
+
+	return b.String()
+}
+
+// ansi matches terminal escape/control sequences such as colors, cursor moves,
+// and other CSI/OSC-style commands so GUI console output stays plain text.
 const ansi = "[\u001B\u009B][[\\]()#;?]*(?:(?:(?:[a-zA-Z\\d]*(?:;[a-zA-Z\\d]*)*)?\u0007)|(?:(?:\\d{1,4}(?:;\\d{0,4})*)?[\\dA-PRZcf-ntqry=><~]))"
 
 var re = regexp.MustCompile(ansi)
 
+// Strip removes ANSI terminal escape sequences from streamed console output.
+// The pattern is not empty: it starts with ESC/C1 control bytes and then matches
+// the parameter bytes and final opcode used by ANSI control sequences.
 func Strip(str string) string {
 	return re.ReplaceAllString(str, "")
 }

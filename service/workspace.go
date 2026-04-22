@@ -57,7 +57,6 @@ type WorkspaceService struct {
 	allCache         []WorkspaceState
 
 	appState      AppState
-	watcherTicker *time.Ticker
 	mu            sync.Mutex
 	watcherCancel context.CancelFunc
 	settingCache  *WorkspaceSettings
@@ -87,7 +86,7 @@ func (rp *WorkspaceService) AddRecent(projectDir string) {
 	rp.allCache = rp.allCache[:0] // invalidate cache
 
 	rp.restartWatcher()
-	rp.settingCache = nil
+	rp.clearSettingsCache()
 }
 
 func (rp *WorkspaceService) SaveSnapshot(treeState *filetree.TreeState, openedFiles []string) {
@@ -173,10 +172,6 @@ func (rp *WorkspaceService) Close() {
 		rp.db.Close()
 	}
 
-	if rp.watcherTicker != nil {
-		rp.watcherTicker.Stop()
-	}
-
 	if rp.watcherCancel != nil {
 		rp.watcherCancel()
 	}
@@ -196,29 +191,7 @@ func (rp *WorkspaceService) LoadWorkspaceSettings() WorkspaceSettings {
 		return *rp.settingCache
 	}
 
-	typstifyDir := filepath.Join(rp.currentWorkspace.Path, ".typstify")
-	settingsFile := filepath.Join(typstifyDir, "settings.json")
-
-	err := os.MkdirAll(typstifyDir, 0755)
-	if err != nil {
-		log.Printf("create .typstify directory failed: %v", err)
-		return WorkspaceSettings{}
-	}
-
-	data, err := os.ReadFile(settingsFile)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return WorkspaceSettings{}
-		}
-		log.Printf("read workspace settings failed: %v", err)
-		return WorkspaceSettings{}
-	}
-
-	var settings WorkspaceSettings
-	if err := json.Unmarshal(data, &settings); err != nil {
-		log.Printf("parse workspace settings failed: %v", err)
-		return WorkspaceSettings{}
-	}
+	settings := rp.loadWorkspaceSettingsForPath(rp.currentWorkspace.Path)
 
 	rp.settingCache = &settings
 
@@ -231,28 +204,8 @@ func (rp *WorkspaceService) saveWorkspaceSetting(setting WorkspaceSettings) {
 		return
 	}
 
-	typstifyDir := filepath.Join(rp.currentWorkspace.Path, ".typstify")
-	settingsFile := filepath.Join(typstifyDir, "settings.json")
-
-	err := os.MkdirAll(typstifyDir, 0755)
-	if err != nil {
-		log.Printf("create .typstify directory failed: %v", err)
-		return
-	}
-
-	data, err := json.MarshalIndent(setting, "", "  ")
-	if err != nil {
-		log.Printf("serialize workspace settings failed: %v", err)
-		return
-	}
-
-	err = os.WriteFile(settingsFile, data, 0644)
-	if err != nil {
-		log.Printf("write workspace settings failed: %v", err)
-	}
-
-	// clear cached setting
-	rp.settingCache = nil
+	rp.saveWorkspaceSettingForPath(rp.currentWorkspace.Path, setting)
+	rp.clearSettingsCache()
 }
 
 // SaveManagedBibliography saves the managed bibliography file info in settings.json.
@@ -316,15 +269,10 @@ func (rp *WorkspaceService) restartWatcher() {
 	// start bib sync watcher
 	ctx, cancel := context.WithCancel(context.Background())
 	rp.watcherCancel = cancel
-
-	if rp.watcherTicker != nil {
-		rp.watcherTicker.Reset(time.Minute * 3)
-	} else {
-		rp.watcherTicker = time.NewTicker(time.Minute * 3)
-	}
+	ticker := time.NewTicker(time.Minute * 3)
 
 	syncBib := func() {
-		settings := rp.LoadWorkspaceSettings()
+		settings := rp.loadWorkspaceSettingsForPath(rootDir)
 		// remove obsolete files that have be deleted from the disk
 		settings.BibFiles = slices.DeleteFunc(
 			settings.BibFiles,
@@ -342,10 +290,13 @@ func (rp *WorkspaceService) restartWatcher() {
 		)
 
 		rp.mu.Lock()
-		rp.saveWorkspaceSetting(settings)
+		rp.saveWorkspaceSettingForPath(rootDir, settings)
+		if rootDir == rp.currentWorkspace.Path {
+			rp.clearSettingsCache()
+		}
 		rp.mu.Unlock()
 
-		settings = rp.LoadWorkspaceSettings()
+		settings = rp.loadWorkspaceSettingsForPath(rootDir)
 
 		for _, mb := range settings.BibFiles {
 			if mb.ExportID != "" {
@@ -367,6 +318,7 @@ func (rp *WorkspaceService) restartWatcher() {
 	}
 
 	go func() {
+		defer ticker.Stop()
 		// sync once at start time.
 		syncBib()
 
@@ -374,12 +326,74 @@ func (rp *WorkspaceService) restartWatcher() {
 			select {
 			case <-ctx.Done():
 				return
-			case <-rp.watcherTicker.C:
+			case <-ticker.C:
 				syncBib()
 			}
 		}
 	}()
 	log.Println("restarted watcher")
+}
+
+func (rp *WorkspaceService) loadWorkspaceSettingsForPath(projectDir string) WorkspaceSettings {
+	if projectDir == "" {
+		return WorkspaceSettings{}
+	}
+
+	typstifyDir := filepath.Join(projectDir, ".typstify")
+	settingsFile := filepath.Join(typstifyDir, "settings.json")
+
+	err := os.MkdirAll(typstifyDir, 0755)
+	if err != nil {
+		log.Printf("create .typstify directory failed: %v", err)
+		return WorkspaceSettings{}
+	}
+
+	data, err := os.ReadFile(settingsFile)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return WorkspaceSettings{}
+		}
+		log.Printf("read workspace settings failed: %v", err)
+		return WorkspaceSettings{}
+	}
+
+	var settings WorkspaceSettings
+	if err := json.Unmarshal(data, &settings); err != nil {
+		log.Printf("parse workspace settings failed: %v", err)
+		return WorkspaceSettings{}
+	}
+
+	return settings
+}
+
+func (rp *WorkspaceService) saveWorkspaceSettingForPath(projectDir string, setting WorkspaceSettings) {
+	if projectDir == "" {
+		return
+	}
+
+	typstifyDir := filepath.Join(projectDir, ".typstify")
+	settingsFile := filepath.Join(typstifyDir, "settings.json")
+
+	err := os.MkdirAll(typstifyDir, 0755)
+	if err != nil {
+		log.Printf("create .typstify directory failed: %v", err)
+		return
+	}
+
+	data, err := json.MarshalIndent(setting, "", "  ")
+	if err != nil {
+		log.Printf("serialize workspace settings failed: %v", err)
+		return
+	}
+
+	err = os.WriteFile(settingsFile, data, 0644)
+	if err != nil {
+		log.Printf("write workspace settings failed: %v", err)
+	}
+}
+
+func (rp *WorkspaceService) clearSettingsCache() {
+	rp.settingCache = nil
 }
 
 func (rp *WorkspaceService) SetPreviewMode(mode string) {

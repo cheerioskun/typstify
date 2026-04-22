@@ -236,8 +236,6 @@ const ansi = "[\u001B\u009B][[\\]()#;?]*(?:(?:(?:[a-zA-Z\\d]*(?:;[a-zA-Z\\d]*)*)
 var re = regexp.MustCompile(ansi)
 
 // Strip removes ANSI terminal escape sequences from streamed console output.
-// The pattern is not empty: it starts with ESC/C1 control bytes and then matches
-// the parameter bytes and final opcode used by ANSI control sequences.
 func Strip(str string) string {
 	return re.ReplaceAllString(str, "")
 }

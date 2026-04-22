@@ -1,6 +1,7 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"log"
@@ -219,8 +220,8 @@ func (rp *WorkspaceService) SaveManagedBibliography(bib ManagedBibliography) {
 	rp.mu.Lock()
 	defer rp.mu.Unlock()
 
-	// create an empty file at once to prevent it from being deleted in the watcher loop.
-	err := os.WriteFile(filepath.Join(rp.currentWorkspace.Path, bib.File), []byte(""), 0644)
+	// Create the file if it does not exist yet, but never truncate existing content.
+	err := rp.ensureManagedBibliographyFile(filepath.Join(rp.currentWorkspace.Path, bib.File))
 	if err != nil {
 		log.Printf("write bib file failed: %v", err)
 	}
@@ -300,13 +301,7 @@ func (rp *WorkspaceService) restartWatcher() {
 
 		for _, mb := range settings.BibFiles {
 			if mb.ExportID != "" {
-				file, err := os.OpenFile(filepath.Join(rootDir, mb.File), os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644)
-				if err != nil {
-					log.Println("open file error: ", err)
-					continue
-				}
-				defer file.Close()
-				err = cli.FetchZoteroExport(mb.ExportID, file)
+				err := rp.syncManagedBibliography(rootDir, mb)
 				if err != nil {
 					log.Println("export error: ", err)
 					continue
@@ -332,6 +327,72 @@ func (rp *WorkspaceService) restartWatcher() {
 		}
 	}()
 	log.Println("restarted watcher")
+}
+
+func (rp *WorkspaceService) ensureManagedBibliographyFile(filename string) error {
+	if err := os.MkdirAll(filepath.Dir(filename), 0755); err != nil {
+		return err
+	}
+
+	file, err := os.OpenFile(filename, os.O_RDWR|os.O_CREATE, 0644)
+	if err != nil {
+		return err
+	}
+
+	return file.Close()
+}
+
+func (rp *WorkspaceService) syncManagedBibliography(rootDir string, mb ManagedBibliography) error {
+	filename := filepath.Join(rootDir, mb.File)
+	if err := rp.ensureManagedBibliographyFile(filename); err != nil {
+		return err
+	}
+
+	var content bytes.Buffer
+	if err := cli.FetchZoteroExport(mb.ExportID, &content); err != nil {
+		return err
+	}
+
+	if content.Len() == 0 {
+		log.Printf("skip overwriting bibliography %s with empty content", mb.File)
+		return nil
+	}
+
+	existingContent, err := os.ReadFile(filename)
+	if err != nil {
+		return err
+	}
+
+	if bytes.Equal(existingContent, content.Bytes()) {
+		return nil
+	}
+
+	tmpFile, err := os.CreateTemp(filepath.Dir(filename), filepath.Base(filename)+".*.tmp")
+	if err != nil {
+		return err
+	}
+	tmpName := tmpFile.Name()
+
+	defer func() {
+		if err := os.Remove(tmpName); err != nil && !os.IsNotExist(err) {
+			log.Printf("remove temp bibliography file failed: %v", err)
+		}
+	}()
+
+	if _, err := tmpFile.Write(content.Bytes()); err != nil {
+		tmpFile.Close()
+		return err
+	}
+
+	if err := tmpFile.Close(); err != nil {
+		return err
+	}
+
+	if err := os.Rename(tmpName, filename); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (rp *WorkspaceService) loadWorkspaceSettingsForPath(projectDir string) WorkspaceSettings {

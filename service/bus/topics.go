@@ -5,13 +5,18 @@ const (
 	TopicStatusbarNotifyEvent = "statusbar.notification"
 	TopicProjectSwitched      = "project.switched"
 	// request to create a new project.
-	TopicProjectCreate = "project.create"
+	TopicProjectCreate        = "project.create"
+	TopicWorkspaceFileChanged = "workspace.file.changed"
 )
+
+type FileChangedEvent struct {
+	Path string
+}
 
 var allTopics = []string{
 	TopicSettingsUpdated,
 	TopicStatusbarNotifyEvent,
 	TopicProjectSwitched,
 	TopicProjectCreate,
+	TopicWorkspaceFileChanged,
 }
-

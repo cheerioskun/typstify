@@ -127,6 +127,10 @@ func (te *TypstEditor) setupEditor(path string) error {
 	if err != nil {
 		return err
 	}
+	if err := srcEditor.BindWorkspaceWatcher(te.srv); err != nil {
+		srcEditor.Close()
+		return err
+	}
 
 	te.srcEditor = srcEditor
 

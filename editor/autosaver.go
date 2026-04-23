@@ -38,6 +38,10 @@ func (as *AutoSaver) Update() {
 	as.updateCnt.Add(1)
 }
 
+func (as *AutoSaver) HasPendingChanges() bool {
+	return as.updateCnt.Load() > 0
+}
+
 func (as *AutoSaver) IsIdle() bool {
 	return as.updateCnt.Load() == 0 && (!as.lastSaveTime.IsZero()) && time.Since(as.lastSaveTime) > 5*time.Minute
 }

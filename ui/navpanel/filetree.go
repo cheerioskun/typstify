@@ -10,13 +10,11 @@ import (
 	"gioui.org/font"
 	"gioui.org/layout"
 	"gioui.org/unit"
-	"gioui.org/widget"
 	"gioui.org/widget/material"
 	"github.com/oligo/gioview/explorer"
 	"github.com/oligo/gioview/misc"
 	"github.com/oligo/gioview/theme"
 	"github.com/oligo/gioview/view"
-	"golang.org/x/exp/shiny/materialdesign/icons"
 	"looz.ws/typstify/i18n"
 	"looz.ws/typstify/service"
 	"looz.ws/typstify/service/bus"
@@ -32,12 +30,6 @@ import (
 type (
 	C = layout.Context
 	D = layout.Dimensions
-)
-
-var (
-	moreIcon, _     = widget.NewIcon(icons.NavigationMoreHoriz)
-	createFolder, _ = widget.NewIcon(icons.FileCreateNewFolder)
-	createFile, _   = widget.NewIcon(icons.ContentCreate)
 )
 
 type FileTreeNav struct {

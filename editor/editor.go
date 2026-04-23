@@ -28,6 +28,7 @@ import (
 	"gioui.org/unit"
 	"gioui.org/widget"
 	"gioui.org/x/component"
+	"github.com/fsnotify/fsnotify"
 	"github.com/oligo/gioview/menu"
 	"github.com/oligo/gioview/theme"
 	"github.com/oligo/gvcode"
@@ -41,6 +42,7 @@ import (
 	"looz.ws/typstify/lsp"
 	"looz.ws/typstify/lsp/protocol"
 	"looz.ws/typstify/service"
+	"looz.ws/typstify/service/bus"
 	"looz.ws/typstify/service/settings"
 	"looz.ws/typstify/typst"
 	"looz.ws/typstify/utils"
@@ -74,11 +76,13 @@ type TextEditor struct {
 	hoverTips *HoverTips
 	popup     *completion.CompletionPopup
 	// diagnostics decorations
-	diagnosticsDecos []decoration.Decoration
-	overviewRuler    OverviewRuler
-	diffProvider     *providers.VCSDiffProvider
-	differ           *diff.GitDiff
-	pendingHunks     atomic.Pointer[[]*providers.DiffHunk]
+	diagnosticsDecos      []decoration.Decoration
+	overviewRuler         OverviewRuler
+	diffProvider          *providers.VCSDiffProvider
+	differ                *diff.GitDiff
+	pendingHunks          atomic.Pointer[[]*providers.DiffHunk]
+	pendingExternalChange atomic.Bool
+	srv                   *service.ServiceFacade
 
 	OnSelectChange func(gvcode.Position)
 	OnOpenLink     func(link string, external bool)
@@ -220,6 +224,10 @@ func (me *TextEditor) LayoutStatus(gtx C, th *theme.Theme, srv *service.ServiceF
 }
 
 func (me *TextEditor) update(gtx layout.Context, th *theme.Theme, settings *settings.EditorSettings) {
+	if me.pendingExternalChange.Swap(false) {
+		me.checkExternalChanges()
+	}
+
 	colorScheme := th.Get("codeColorScheme").(string)
 
 	colorSchemeChanged := me.colorScheme == nil || me.colorScheme.Name != colorScheme
@@ -456,6 +464,92 @@ func (me *TextEditor) onTextChanged() {
 	me.autoSaver.Update()
 }
 
+func (me *TextEditor) hasPendingChanges() bool {
+	return me.autoSaver != nil && me.autoSaver.HasPendingChanges()
+}
+
+func (me *TextEditor) BindWorkspaceWatcher(srv *service.ServiceFacade) error {
+	me.srv = srv
+
+	if err := srv.WatchFile(me.filename); err != nil {
+		return err
+	}
+
+	srv.EventBus().Subscribe(me, "editor.file.changed", `workspace\.file\.changed`, func(topic string, data interface{}) {
+		evt, ok := data.(bus.FileChangedEvent)
+		if !ok || filepath.Clean(evt.Path) != filepath.Clean(me.filename) {
+			return
+		}
+
+		me.pendingExternalChange.Store(true)
+	})
+
+	return nil
+}
+
+func (me *TextEditor) ensureStatus() *EditorStatus {
+	if me.status == nil {
+		me.status = &EditorStatus{}
+	}
+
+	return me.status
+}
+
+func (me *TextEditor) checkExternalChanges() {
+	content, err := os.ReadFile(me.filename)
+	if err != nil {
+		me.ensureStatus().SaveErr = err
+		return
+	}
+
+	newHash := calcDigest(content)
+	if newHash == me.originalHash {
+		me.ensureStatus().SaveErr = nil
+		return
+	}
+
+	status := me.ensureStatus()
+	if me.hasPendingChanges() {
+		status.SaveErr = errors.New("file changed on disk while editor has unsaved changes")
+		return
+	}
+
+	if err := me.reloadContent(content, newHash); err != nil {
+		status.SaveErr = err
+		return
+	}
+
+	status.SaveErr = nil
+}
+
+func (me *TextEditor) reloadContent(content []byte, hash string) error {
+	start, end := me.state.Selection()
+	me.state.SetText(string(content))
+
+	textLen := me.state.Len()
+	if start > textLen {
+		start = textLen
+	}
+	if end > textLen {
+		end = textLen
+	}
+	me.state.SetCaret(start, end)
+
+	me.originalHash = hash
+	me.highlighter.Highlight(me.state)
+	if me.searchbar != nil {
+		me.searchbar.ReSearch()
+	}
+	me.updateDiff()
+
+	if me.lspClient != nil {
+		me.lspClient.OnEditorUpdated(me.filename, me.state)
+		me.lspClient.OnEditorSaved(me.filename)
+	}
+
+	return nil
+}
+
 // Let the LSP server(tinymist) detect the focused file.
 func (me *TextEditor) FocusLsp() {
 	if me.lspClient != nil {
@@ -524,6 +618,12 @@ func (me *TextEditor) convertIndentation(kind gvcode.TabStyle, tabWidth int, tex
 func (me *TextEditor) Close() error {
 	me.autoSaver.Stop()
 	me.highlighter.Close()
+	if me.srv != nil {
+		me.srv.EventBus().Unsubscribe(me)
+		if err := me.srv.UnwatchFile(me.filename); err != nil && !errors.Is(err, fsnotify.ErrNonExistentWatch) {
+			log.Println("unwatch file failed: ", err)
+		}
+	}
 	if me.lspClient != nil {
 		me.lspClient.OnEditorClosed(me.filename)
 	}
@@ -579,6 +679,7 @@ func NewTextEditor(path string, createOnMissing bool, readonly bool, settings *s
 
 	ed.state.WithOptions(
 		gvcode.WrapLine(false),
+		gvcode.ReadOnlyMode(readonly),
 		gvcode.WithGutterGap(unit.Dp(24)),
 		gvcode.WithCornerRadius(unit.Dp(4)),
 		gvcode.WithGutter(providers.NewLineNumberProvider()),
@@ -640,15 +741,13 @@ func NewTextEditor(path string, createOnMissing bool, readonly bool, settings *s
 			return err
 		}
 
-		if ed.status == nil {
-			ed.status = &EditorStatus{}
-		}
+		status := ed.ensureStatus()
 		if newHash := calcDigest(content); newHash != ed.originalHash {
 			err := errors.New("cannot save file as it has beed edited elsewhere")
-			ed.status.SaveErr = err
+			status.SaveErr = err
 			return err
 		} else {
-			ed.status.SaveErr = nil
+			status.SaveErr = nil
 		}
 
 		file.Truncate(0)

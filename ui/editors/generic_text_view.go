@@ -61,6 +61,10 @@ func (te *GenericTextEditor) OnNavTo(intent view.Intent) error {
 	if err != nil {
 		return err
 	}
+	if err := srcEditor.BindWorkspaceWatcher(te.srv); err != nil {
+		srcEditor.Close()
+		return err
+	}
 
 	te.srcEditor = srcEditor
 	te.header = newEditorHeader(rootDir, te.currentFile, te.headerActions())

@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/fsnotify/fsnotify"
@@ -75,7 +76,13 @@ type WorkspaceService struct {
 	eventBus    *bus.EventBus
 
 	gitRepoState *GitRepoState
+	gitMu        sync.Mutex
+
+	gitDebounceTimer *time.Timer
+	gitRepoDirty     atomic.Bool
 }
+
+const gitDebounceInterval = 500 * time.Millisecond
 
 func NewWorkspaceService(dataDir string, eventBus *bus.EventBus) *WorkspaceService {
 	db := openDB(filepath.Join(dataDir, "recent.db"))
@@ -88,6 +95,7 @@ func NewWorkspaceService(dataDir string, eventBus *bus.EventBus) *WorkspaceServi
 		appStateIndex: appStateIndex,
 		fileWatcher:   NewWorkspaceFileWatcher(eventBus),
 		eventBus:      eventBus,
+		gitRepoState:  &GitRepoState{},
 	}
 }
 
@@ -115,8 +123,9 @@ func (rp *WorkspaceService) SwitchWorkspace(projectDir string) {
 		rp.unwatchGitRepo(lastWorkspaceDir)
 	}
 
+	rp.gitMu.Lock()
 	rp.gitRepoState = &GitRepoState{}
-
+	rp.gitMu.Unlock()
 	if rp.updateGitRepoState(projectDir); rp.gitRepoState.Branch != "" {
 		rp.watchGitRepo()
 	}
@@ -212,6 +221,10 @@ func (rp *WorkspaceService) Close() {
 
 	if rp.fileWatcher != nil {
 		rp.fileWatcher.Close()
+	}
+
+	if rp.gitDebounceTimer != nil {
+		rp.gitDebounceTimer.Stop()
 	}
 }
 
@@ -550,6 +563,10 @@ func (rp *WorkspaceService) watchGitRepo() {
 		go rp.updateGitRepoState(workspaceRoot)
 	})
 
+	rp.eventBus.Subscribe(rp, "workspace.gitrepo.files", `workspace\.file\.changed`, func(topic string, data interface{}) {
+		rp.scheduleGitUpdate()
+	})
+
 }
 
 func (rp *WorkspaceService) unwatchGitRepo(workspaceDir string) {
@@ -580,13 +597,41 @@ func (rp *WorkspaceService) updateGitRepoState(workspaceRoot string) {
 		branch = utils.HeadRefName(workspaceRoot)
 	}
 
-	rp.gitRepoState.Branch = branch
-	rp.gitRepoState.Changes = utils.GitRepoStatus(workspaceRoot)
-	rp.gitRepoState.AllBranches, _ = utils.ListGitBranches(workspaceRoot)
+	allBranches, _ := utils.ListGitBranches(workspaceRoot)
+
+	newState := &GitRepoState{
+		Branch:      branch,
+		Changes:     utils.GitRepoStatus(workspaceRoot),
+		AllBranches: allBranches,
+	}
+
+	rp.gitMu.Lock()
+	defer rp.gitMu.Unlock()
+	rp.gitRepoState = newState
 }
 
 func (rp *WorkspaceService) GitRepo() GitRepoState {
+	rp.gitMu.Lock()
+	defer rp.gitMu.Unlock()
 	return *rp.gitRepoState
+}
+
+// scheduleGitUpdate debounces workspace file changes so we only run
+// expensive git commands (status, for-each-ref) once after changes settle.
+func (rp *WorkspaceService) scheduleGitUpdate() {
+	rp.gitRepoDirty.Store(true)
+
+	rp.gitMu.Lock()
+	defer rp.gitMu.Unlock()
+
+	if rp.gitDebounceTimer != nil {
+		rp.gitDebounceTimer.Stop()
+	}
+	rp.gitDebounceTimer = time.AfterFunc(gitDebounceInterval, func() {
+		if rp.gitRepoDirty.CompareAndSwap(true, false) {
+			go rp.updateGitRepoState(rp.currentWorkspace.Path)
+		}
+	})
 }
 
 func openDB(dbFile string) *bolt.DB {

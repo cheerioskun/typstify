@@ -148,6 +148,9 @@ var GitBranchPlus []byte
 //go:embed lucide/git-branch-minus.svg
 var GitBranchMinus []byte
 
+//go:embed lucide/tag.svg
+var Tag []byte
+
 //go:embed lucide/terminal.svg
 var Terminal []byte
 

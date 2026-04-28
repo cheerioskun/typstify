@@ -44,7 +44,7 @@ type GitRepoState struct {
 	// current git branch
 	Branch      string
 	Changes     []utils.GitFileChange
-	AllBranches []string
+	AllBranches []utils.BranchInfo
 }
 
 type WorkspaceState struct {
@@ -53,7 +53,6 @@ type WorkspaceState struct {
 	LastAccessAt time.Time
 	TreeState    *filetree.TreeState
 	OpenedFiles  []string
-	GitRepoState GitRepoState
 }
 
 type AppState struct {
@@ -74,6 +73,8 @@ type WorkspaceService struct {
 
 	fileWatcher *WorkspaceFileWatcher
 	eventBus    *bus.EventBus
+
+	gitRepoState *GitRepoState
 }
 
 func NewWorkspaceService(dataDir string, eventBus *bus.EventBus) *WorkspaceService {
@@ -114,9 +115,9 @@ func (rp *WorkspaceService) SwitchWorkspace(projectDir string) {
 		rp.unwatchGitRepo(lastWorkspaceDir)
 	}
 
-	rp.currentWorkspace.GitRepoState = GitRepoState{}
+	rp.gitRepoState = &GitRepoState{}
 
-	if rp.updateGitRepoState(projectDir); rp.currentWorkspace.GitRepoState.Branch != "" {
+	if rp.updateGitRepoState(projectDir); rp.gitRepoState.Branch != "" {
 		rp.watchGitRepo()
 	}
 
@@ -572,13 +573,20 @@ func (rp *WorkspaceService) updateGitRepoState(workspaceRoot string) {
 		return
 	}
 
-	rp.currentWorkspace.GitRepoState.Branch = branch
-
-	if branch != "" {
-		rp.currentWorkspace.GitRepoState.Changes = utils.GitRepoStatus(workspaceRoot)
+	if branch == "" {
+		// Detached HEAD (tag, remote branch, or bare commit) —
+		// resolve to a human-readable name so the indicator stays
+		// visible and the user can still switch to a real branch.
+		branch = utils.HeadRefName(workspaceRoot)
 	}
 
-	log.Printf("%s: branch: %s, changes: %v", workspaceRoot, branch, rp.currentWorkspace.GitRepoState.Changes)
+	rp.gitRepoState.Branch = branch
+	rp.gitRepoState.Changes = utils.GitRepoStatus(workspaceRoot)
+	rp.gitRepoState.AllBranches, _ = utils.ListGitBranches(workspaceRoot)
+}
+
+func (rp *WorkspaceService) GitRepo() GitRepoState {
+	return *rp.gitRepoState
 }
 
 func openDB(dbFile string) *bolt.DB {

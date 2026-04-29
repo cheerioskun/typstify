@@ -87,9 +87,10 @@ func (h *Highlighter) Highlight(editor *gvcode.Editor) {
 	}
 	reader := editor.GetReader()
 	reader.Seek(0, io.SeekStart)
+	size := editor.Len()
 
 	h.debouncer.Run(func() {
-		h.tokenize(reader)
+		h.tokenize(reader, size)
 	})
 
 }
@@ -98,7 +99,7 @@ func (h *Highlighter) Close() {
 	h.debouncer.Stop()
 }
 
-func (h *Highlighter) tokenize(reader io.Reader) {
+func (h *Highlighter) tokenize(reader io.Reader, contentSize int) {
 	source, err := io.ReadAll(reader)
 	if err != nil {
 		log.Println("read from editor error: ", err)
@@ -131,7 +132,7 @@ func (h *Highlighter) tokenize(reader io.Reader) {
 	// newTokens will never be nil, so we can distinct no changes and not computed.
 	h.pendingResult.Store(&pendingHighlight{
 		tokens:    newTokens,
-		sourceLen: len(source),
+		sourceLen: contentSize,
 	})
 }
 

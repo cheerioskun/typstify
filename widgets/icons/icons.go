@@ -79,6 +79,9 @@ var ScanSearch []byte
 //go:embed lucide/arrow-left-right.svg
 var ArrowLeftRight []byte
 
+//go:embed lucide/arrow-right-from-line.svg
+var ArrowRightFromLine []byte
+
 //go:embed lucide/folder-open.svg
 var FolderOpen []byte
 

@@ -40,7 +40,7 @@ var (
 	TypstEditorViewID = view.NewViewID("TypstEditor")
 	searchIcon        = appIcons.NewSvgIcon(appIcons.Search)
 	previewIcon       = appIcons.NewSvgIcon(appIcons.ScanSearch)
-	exportIcon        = appIcons.NewSvgIcon(appIcons.ArrowLeftRight)
+	exportIcon        = appIcons.NewSvgIcon(appIcons.ArrowRightFromLine)
 	presentationIcon  = appIcons.NewSvgIcon(appIcons.Presentation)
 )
 

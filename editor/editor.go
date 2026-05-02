@@ -293,7 +293,6 @@ func (me *TextEditor) handleEvents(gtx layout.Context) {
 			me.searchbar.ReSearch()
 			if me.lspClient != nil {
 				me.lspClient.OnEditorUpdated(me.filename, me.state)
-				me.state.OnTextEdit()
 			}
 
 			me.updateDiff()
@@ -666,7 +665,7 @@ func (te *TextEditor) SetupLsp(gtx layout.Context, client *lsp.Client) {
 	// Setting up auto-completion.
 	cm := &completion.DefaultCompletion{Editor: te.state}
 	//cm.SetDelay(10 * time.Millisecond)
-	completor := lsp.NewLspAutoCompletor(client, te.filename)
+	completor := lsp.NewLspAutoCompletor(client, te.filename, te.state)
 	if completor == nil {
 		log.Println("failed to setup auto completor")
 		return

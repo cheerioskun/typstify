@@ -15,11 +15,12 @@ import (
 type LspAutoCompletor struct {
 	client     *Client
 	filePath   string
+	editor     *gvcode.Editor
 	candicates []gvcode.CompletionCandidate
 	resultBuf  []gvcode.CompletionCandidate
 }
 
-func NewLspAutoCompletor(client *Client, filePath string) *LspAutoCompletor {
+func NewLspAutoCompletor(client *Client, filePath string, editor *gvcode.Editor) *LspAutoCompletor {
 	if client == nil {
 		log.Println("LSP client is not initialized!")
 		return nil
@@ -28,6 +29,7 @@ func NewLspAutoCompletor(client *Client, filePath string) *LspAutoCompletor {
 	return &LspAutoCompletor{
 		filePath: filePath,
 		client:   client,
+		editor:   editor,
 	}
 }
 
@@ -48,6 +50,10 @@ func (c *LspAutoCompletor) Trigger() gvcode.Trigger {
 }
 
 func (c *LspAutoCompletor) Suggest(ctx gvcode.CompletionContext) []gvcode.CompletionCandidate {
+	// Notify LSP server the editor content has changed:
+	c.client.OnEditorUpdated(c.filePath, c.editor)
+
+	// Then request the completion result based on the new version of content.
 	c.candicates = c.candicates[:0]
 	result, err := c.client.Complete(context.Background(), c.filePath, ctx.Position.Line, ctx.Position.Column)
 	if err != nil {
